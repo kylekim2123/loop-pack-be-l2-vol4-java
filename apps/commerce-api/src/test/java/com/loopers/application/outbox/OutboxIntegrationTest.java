@@ -23,11 +23,16 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.loopers.application.coupon.CouponFacade;
+import com.loopers.application.coupon.CouponIssueRequestInfo;
 import com.loopers.application.like.LikeFacade;
 import com.loopers.application.order.OrderFacade;
 import com.loopers.application.order.OrderItemCommand;
 import com.loopers.application.product.ProductFacade;
 import com.loopers.domain.brand.BrandModel;
+import com.loopers.domain.coupon.CouponIssueRequestStatus;
+import com.loopers.domain.coupon.CouponModel;
+import com.loopers.domain.coupon.DiscountType;
 import com.loopers.domain.like.LikeCreatedEvent;
 import com.loopers.domain.outbox.OutboxEventModel;
 import com.loopers.domain.outbox.OutboxEventType;
@@ -35,6 +40,7 @@ import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.user.PasswordEncrypter;
 import com.loopers.domain.user.UserModel;
 import com.loopers.infrastructure.brand.BrandJpaRepository;
+import com.loopers.infrastructure.coupon.CouponJpaRepository;
 import com.loopers.infrastructure.kafka.KafkaMessagePublisher;
 import com.loopers.infrastructure.outbox.OutboxEventJpaRepository;
 import com.loopers.infrastructure.product.ProductJpaRepository;
@@ -57,6 +63,12 @@ class OutboxIntegrationTest {
 
     @Autowired
     private ProductFacade productFacade;
+
+    @Autowired
+    private CouponFacade couponFacade;
+
+    @Autowired
+    private CouponJpaRepository couponJpaRepository;
 
     @Autowired
     private UserJpaRepository userJpaRepository;
@@ -169,6 +181,36 @@ class OutboxIntegrationTest {
             () -> assertThat(outboxEvents.get(0).getTopic()).isEqualTo(KafkaTopicConfig.ORDER_EVENTS_TOPIC),
             () -> assertThat(outboxEvents.get(0).getEventType()).isEqualTo(OutboxEventType.ORDER_CREATED.name()),
             () -> assertThat(outboxEvents.get(0).getPayload()).contains("\"quantity\":2")
+        );
+    }
+
+    @DisplayName("쿠폰 발급 요청이 접수되면 PENDING 요청과 Outbox 행이 한 트랜잭션으로 저장된다.")
+    @Test
+    void recordsIssueRequestAndOutboxRow_atomically_whenCouponIssueIsRequested() {
+        // arrange
+        UserModel user = saveUser();
+        CouponModel coupon = couponJpaRepository.save(CouponModel.builder()
+            .rawName("선착순 쿠폰")
+            .type(DiscountType.FIXED)
+            .rawValue(5_000)
+            .rawMinOrderAmount(10_000)
+            .rawExpiredAt(ZonedDateTime.now().plusDays(7))
+            .now(ZonedDateTime.now())
+            .maxQuantity(100)
+            .build());
+
+        // act
+        CouponIssueRequestInfo issueRequestInfo = couponFacade.createCouponIssueRequest(
+            user.getId(), coupon.getId(), ZonedDateTime.now());
+
+        // assert
+        List<OutboxEventModel> outboxEvents = outboxEventJpaRepository.findAll();
+        assertAll(
+            () -> assertThat(issueRequestInfo.status()).isEqualTo(CouponIssueRequestStatus.PENDING),
+            () -> assertThat(outboxEvents).hasSize(1),
+            () -> assertThat(outboxEvents.get(0).getTopic()).isEqualTo(KafkaTopicConfig.COUPON_ISSUE_REQUESTS_TOPIC),
+            () -> assertThat(outboxEvents.get(0).getEventType()).isEqualTo(OutboxEventType.COUPON_ISSUE_REQUESTED.name()),
+            () -> assertThat(outboxEvents.get(0).getPartitionKey()).isEqualTo(String.valueOf(coupon.getId()))
         );
     }
 

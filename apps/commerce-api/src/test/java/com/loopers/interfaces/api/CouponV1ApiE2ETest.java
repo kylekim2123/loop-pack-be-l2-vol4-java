@@ -21,13 +21,13 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import com.loopers.domain.coupon.CouponIssueRequestStatus;
 import com.loopers.domain.coupon.CouponModel;
 import com.loopers.domain.coupon.DiscountType;
-import com.loopers.domain.coupon.UserCouponModel;
 import com.loopers.domain.user.PasswordEncrypter;
 import com.loopers.domain.user.UserModel;
+import com.loopers.infrastructure.coupon.CouponIssueRequestJpaRepository;
 import com.loopers.infrastructure.coupon.CouponJpaRepository;
-import com.loopers.infrastructure.coupon.UserCouponJpaRepository;
 import com.loopers.infrastructure.user.UserJpaRepository;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
@@ -50,7 +50,7 @@ class CouponV1ApiE2ETest {
     private CouponJpaRepository couponJpaRepository;
 
     @Autowired
-    private UserCouponJpaRepository userCouponJpaRepository;
+    private CouponIssueRequestJpaRepository couponIssueRequestJpaRepository;
 
     @Autowired
     private PasswordEncrypter passwordEncrypter;
@@ -114,15 +114,15 @@ class CouponV1ApiE2ETest {
         return new HttpEntity<>(new HttpHeaders());
     }
 
-    @DisplayName("쿠폰 발급 - POST /api/v1/coupons/{couponId}/issue")
+    @DisplayName("쿠폰 발급 요청 접수 - POST /api/v1/coupons/{couponId}/issue")
     @Nested
-    class IssueCoupon {
+    class CreateCouponIssueRequest {
 
-        @DisplayName("정상 요청이면, 201 Created와 함께 발급 쿠폰 식별자가 반환되고 발급 쿠폰이 저장된다.")
+        @DisplayName("정상 요청이면, 202 Accepted와 함께 requestId가 반환되고 PENDING 요청이 저장된다.")
         @Test
-        void returnsCreated_andPersistsUserCoupon() {
+        void returnsAccepted_andPersistsPendingRequest() {
             // arrange
-            UserModel user = saveUser("kylekim");
+            saveUser("kylekim");
             CouponModel coupon = saveCoupon();
 
             // act
@@ -135,12 +135,13 @@ class CouponV1ApiE2ETest {
 
             // assert
             Map<String, Object> data = response.getBody().data();
+            Long requestId = Long.valueOf(String.valueOf(data.get("requestId")));
             assertAll(
-                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED),
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED),
                 () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS),
-                () -> assertThat(data).containsOnlyKeys("userCouponId"),
-                () -> assertThat(data.get("userCouponId")).isNotNull(),
-                () -> assertThat(userCouponJpaRepository.existsByUserIdAndCouponId(user.getId(), coupon.getId())).isTrue()
+                () -> assertThat(data).containsOnlyKeys("requestId", "status"),
+                () -> assertThat(data.get("status")).isEqualTo(CouponIssueRequestStatus.PENDING.name()),
+                () -> assertThat(couponIssueRequestJpaRepository.findById(requestId)).isPresent()
             );
         }
 
@@ -219,30 +220,6 @@ class CouponV1ApiE2ETest {
             // arrange
             saveUser("kylekim");
             CouponModel coupon = saveExpiredCoupon();
-
-            // act
-            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
-                issueEndpoint(coupon.getId()),
-                HttpMethod.POST,
-                memberPost("kylekim"),
-                MAP_RESPONSE
-            );
-
-            // assert
-            assertAll(
-                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT),
-                () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.FAIL),
-                () -> assertThat(response.getBody().meta().errorCode()).isEqualTo(ErrorType.CONFLICT.getCode())
-            );
-        }
-
-        @DisplayName("이미 발급받은 템플릿에 다시 요청하면, 409 Conflict로 거절된다.")
-        @Test
-        void returnsConflict_whenAlreadyIssued() {
-            // arrange
-            UserModel user = saveUser("kylekim");
-            CouponModel coupon = saveCoupon();
-            userCouponJpaRepository.save(UserCouponModel.issue(user.getId(), coupon));
 
             // act
             ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
