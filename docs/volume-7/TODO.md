@@ -318,10 +318,10 @@ flowchart TD
 
 **목표:** 유저가 발급 결과를 확인할 수 있게 한다.
 
-- [ ] **`GET /coupons/issue/{requestId}`** — `CouponIssueRequest` 상태(PENDING/SUCCESS/FAILED) 반환
-- [ ] E2E — 접수 → 비동기 처리 → polling으로 결과 확인까지
+- [x] **`GET /coupons/issue/{requestId}`** — 본인 요청만 조회(타인 요청 404), 상태(PENDING/SUCCESS/FAILED) + 실패 reason 반환
+- [x] E2E — 접수 직후 PENDING polling, SUCCESS/FAILED(사유 포함) 응답, 타인 404·미인증 401. **앱 경계 주의:** commerce-api 테스트에는 streamer 컨슈머가 없으므로 SUCCESS/FAILED는 요청 행 픽스처 전이로 검증하고, 접수→컨슈머→polling 전 구간 관통은 Stage 12 실환경(k6)에서 확인
 
-**검증:** requestId로 발급 진행/결과를 조회할 수 있다.
+**검증:** requestId로 발급 진행/결과를 조회할 수 있다. ✅ `CouponV1ApiE2ETest.ReadCouponIssueRequest`
 
 ---
 
