@@ -42,7 +42,7 @@ public class LikeFacade {
             .build();
 
         likeRepository.save(like);
-        eventPublisher.publishEvent(LikeCreatedEvent.from(product.getId()));
+        eventPublisher.publishEvent(LikeCreatedEvent.of(user.getId(), product.getId()));
     }
 
     public void deleteLike(Long userId, Long productId) {
@@ -51,7 +51,7 @@ public class LikeFacade {
 
         int deletedCount = likeRepository.deleteByUserIdAndProductId(user.getId(), product.getId());
         if (deletedCount > 0) {
-            eventPublisher.publishEvent(LikeDeletedEvent.from(product.getId()));
+            eventPublisher.publishEvent(LikeDeletedEvent.of(user.getId(), product.getId()));
         }
     }
 

@@ -1,5 +1,6 @@
 package com.loopers.application.payment;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +11,7 @@ import com.loopers.domain.payment.PaymentModel;
 import com.loopers.domain.payment.PaymentRepository;
 import com.loopers.domain.payment.PaymentRequestResult;
 import com.loopers.domain.payment.PaymentStatus;
+import com.loopers.domain.payment.PaymentSucceededEvent;
 import com.loopers.domain.payment.PaymentTransactionStatus;
 
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ public class PaymentTransactionWriter {
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean confirm(PaymentModel payment, PaymentTransactionStatus resolved) {
@@ -33,6 +36,7 @@ public class PaymentTransactionWriter {
         OrderModel order = orderRepository.getActiveById(payment.getOrderId());
         if (resolved.status() == PaymentStatus.SUCCESS) {
             order.markPaid();
+            eventPublisher.publishEvent(PaymentSucceededEvent.of(payment.getId(), payment.getOrderId(), payment.getAmount()));
         } else if (resolved.status() == PaymentStatus.FAILED) {
             order.markPaymentFailed();
         }

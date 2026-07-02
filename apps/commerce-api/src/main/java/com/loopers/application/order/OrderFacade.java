@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import com.loopers.domain.brand.BrandModel;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.coupon.UserCouponModel;
 import com.loopers.domain.coupon.UserCouponRepository;
+import com.loopers.domain.order.OrderCreatedEvent;
 import com.loopers.domain.order.OrderItemModel;
 import com.loopers.domain.order.OrderModel;
 import com.loopers.domain.order.OrderRepository;
@@ -39,6 +41,7 @@ public class OrderFacade {
     private final BrandRepository brandRepository;
     private final OrderRepository orderRepository;
     private final UserCouponRepository userCouponRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OrderInfo createOrder(Long userId, List<OrderItemCommand> itemCommands, Long userCouponId, ZonedDateTime now) {
         UserModel user = userRepository.getActiveById(userId);
@@ -60,6 +63,7 @@ public class OrderFacade {
             .build();
 
         OrderModel savedOrder = orderRepository.save(order, orderItems);
+        eventPublisher.publishEvent(OrderCreatedEvent.of(savedOrder.getId(), user.getId(), savedOrder.getFinalAmount()));
 
         return OrderInfo.of(savedOrder, orderItems);
     }

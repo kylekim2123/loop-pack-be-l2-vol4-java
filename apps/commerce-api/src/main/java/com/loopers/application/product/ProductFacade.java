@@ -3,6 +3,7 @@ package com.loopers.application.product;
 import java.time.Duration;
 import java.util.function.Supplier;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +12,7 @@ import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductSortType;
+import com.loopers.domain.product.ProductViewedEvent;
 import com.loopers.support.cache.RedisCacheStore;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -30,6 +32,7 @@ public class ProductFacade {
     private final BrandRepository brandRepository;
     private final ProductRepository productRepository;
     private final RedisCacheStore redisCacheStore;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ProductCreateInfo createProduct(Long brandId, String name, String description, Integer price, Integer stock) {
         if (!brandRepository.existsActiveById(brandId)) {
@@ -87,7 +90,10 @@ public class ProductFacade {
         String key = String.format(PRODUCT_DETAIL_KEY_FORMAT, productId);
         Supplier<ProductDetailInfo> productDetailInfoSupplier = () -> ProductDetailInfo.from(productRepository.getActiveDetailById(productId));
 
-        return redisCacheStore.getOrLoad(key, ProductDetailInfo.class, PRODUCT_DETAIL_TTL, productDetailInfoSupplier);
+        ProductDetailInfo productDetailInfo = redisCacheStore.getOrLoad(key, ProductDetailInfo.class, PRODUCT_DETAIL_TTL, productDetailInfoSupplier);
+        eventPublisher.publishEvent(ProductViewedEvent.from(productId));
+
+        return productDetailInfo;
     }
 
     @Transactional(readOnly = true)
