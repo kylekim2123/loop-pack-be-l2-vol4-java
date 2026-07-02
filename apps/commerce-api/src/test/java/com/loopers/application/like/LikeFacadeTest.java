@@ -20,10 +20,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 
 import com.loopers.application.product.ProductSummaryInfo;
+import com.loopers.domain.like.LikeCreatedEvent;
+import com.loopers.domain.like.LikeDeletedEvent;
 import com.loopers.domain.like.LikeModel;
 import com.loopers.domain.like.LikeRepository;
 import com.loopers.domain.product.ProductModel;
@@ -46,6 +49,9 @@ class LikeFacadeTest {
     @Mock
     private LikeRepository likeRepository;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private LikeFacade likeFacade;
 
@@ -56,9 +62,9 @@ class LikeFacadeTest {
         private final Long userId = 1L;
         private final Long productId = 1L;
 
-        @DisplayName("회원과 상품이 활성 상태이고 좋아요가 없으면 저장하고 좋아요 수를 1 증가시킨다.")
+        @DisplayName("회원과 상품이 활성 상태이고 좋아요가 없으면 저장하고 좋아요 등록 이벤트를 발행한다.")
         @Test
-        void savesLike_andIncrementsLikeCount_whenBothActiveAndNotYetLiked() {
+        void savesLike_andPublishesLikeCreatedEvent_whenBothActiveAndNotYetLiked() {
             // arrange
             UserModel user = mock(UserModel.class);
             ProductModel product = mock(ProductModel.class);
@@ -74,13 +80,13 @@ class LikeFacadeTest {
             // assert
             assertAll(
                 () -> then(likeRepository).should().save(any(LikeModel.class)),
-                () -> then(productRepository).should().incrementLikeCount(productId)
+                () -> then(eventPublisher).should().publishEvent(LikeCreatedEvent.from(productId))
             );
         }
 
-        @DisplayName("이미 좋아요한 상품이면 저장하지 않고 좋아요 수도 증가시키지 않는다(멱등).")
+        @DisplayName("이미 좋아요한 상품이면 저장하지 않고 이벤트도 발행하지 않는다(멱등).")
         @Test
-        void doesNotSaveNorIncrement_whenAlreadyLiked() {
+        void doesNotSaveNorPublish_whenAlreadyLiked() {
             // arrange
             UserModel user = mock(UserModel.class);
             ProductModel product = mock(ProductModel.class);
@@ -96,7 +102,7 @@ class LikeFacadeTest {
             // assert
             assertAll(
                 () -> then(likeRepository).should(never()).save(any(LikeModel.class)),
-                () -> then(productRepository).should(never()).incrementLikeCount(anyLong())
+                () -> then(eventPublisher).should(never()).publishEvent(any(LikeCreatedEvent.class))
             );
         }
 
@@ -115,7 +121,7 @@ class LikeFacadeTest {
                     .extracting("errorType")
                     .isEqualTo(ErrorType.NOT_FOUND),
                 () -> then(likeRepository).should(never()).save(any(LikeModel.class)),
-                () -> then(productRepository).should(never()).incrementLikeCount(anyLong())
+                () -> then(eventPublisher).should(never()).publishEvent(any(LikeCreatedEvent.class))
             );
         }
     }
@@ -127,9 +133,9 @@ class LikeFacadeTest {
         private final Long userId = 1L;
         private final Long productId = 1L;
 
-        @DisplayName("좋아요가 실제로 삭제되면 좋아요 수를 1 감소시킨다.")
+        @DisplayName("좋아요가 실제로 삭제되면 좋아요 취소 이벤트를 발행한다.")
         @Test
-        void decrementsLikeCount_whenLikeIsRemoved() {
+        void publishesLikeDeletedEvent_whenLikeIsRemoved() {
             // arrange
             UserModel user = mock(UserModel.class);
             ProductModel product = mock(ProductModel.class);
@@ -145,13 +151,13 @@ class LikeFacadeTest {
             // assert
             assertAll(
                 () -> then(likeRepository).should().deleteByUserIdAndProductId(userId, productId),
-                () -> then(productRepository).should().decrementLikeCount(productId)
+                () -> then(eventPublisher).should().publishEvent(LikeDeletedEvent.from(productId))
             );
         }
 
-        @DisplayName("삭제할 좋아요가 없으면 좋아요 수를 감소시키지 않는다(멱등).")
+        @DisplayName("삭제할 좋아요가 없으면 이벤트를 발행하지 않는다(멱등).")
         @Test
-        void doesNotDecrement_whenNothingDeleted() {
+        void doesNotPublish_whenNothingDeleted() {
             // arrange
             UserModel user = mock(UserModel.class);
             ProductModel product = mock(ProductModel.class);
@@ -167,7 +173,7 @@ class LikeFacadeTest {
             // assert
             assertAll(
                 () -> then(likeRepository).should().deleteByUserIdAndProductId(userId, productId),
-                () -> then(productRepository).should(never()).decrementLikeCount(anyLong())
+                () -> then(eventPublisher).should(never()).publishEvent(any(LikeDeletedEvent.class))
             );
         }
 
@@ -186,7 +192,7 @@ class LikeFacadeTest {
                     .extracting("errorType")
                     .isEqualTo(ErrorType.NOT_FOUND),
                 () -> then(likeRepository).should(never()).deleteByUserIdAndProductId(any(), any()),
-                () -> then(productRepository).should(never()).decrementLikeCount(anyLong())
+                () -> then(eventPublisher).should(never()).publishEvent(any(LikeDeletedEvent.class))
             );
         }
     }

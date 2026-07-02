@@ -1,8 +1,9 @@
 package com.loopers.application.like;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.awaitility.Awaitility.await;
 
+import java.time.Duration;
 import java.time.LocalDate;
 
 import org.junit.jupiter.api.AfterEach;
@@ -71,11 +72,16 @@ class LikeFacadeIntegrationTest {
         return productJpaRepository.findById(productId).orElseThrow().getLikeCount();
     }
 
+    private void awaitLikeCount(Long productId, int expectedLikeCount) {
+        await().atMost(Duration.ofSeconds(5))
+            .untilAsserted(() -> assertThat(likeCountOf(productId)).isEqualTo(expectedLikeCount));
+    }
+
     @DisplayName("좋아요를 등록하면,")
     @Nested
     class CreateLike {
 
-        @DisplayName("좋아요 수가 실제 좋아요 행 수와 일치하도록 증가한다.")
+        @DisplayName("좋아요 수가 실제 좋아요 행 수와 일치하도록 비동기로 증가한다.")
         @Test
         void incrementsLikeCount_toMatchActualLikes() {
             // arrange
@@ -88,10 +94,8 @@ class LikeFacadeIntegrationTest {
             likeFacade.createLike(user2.getId(), product.getId());
 
             // assert
-            assertAll(
-                () -> assertThat(likeCountOf(product.getId())).isEqualTo(2),
-                () -> assertThat(likeJpaRepository.count()).isEqualTo(2L)
-            );
+            assertThat(likeJpaRepository.count()).isEqualTo(2L);
+            awaitLikeCount(product.getId(), 2);
         }
 
         @DisplayName("같은 회원이 다시 등록해도 좋아요 수가 중복 증가하지 않는다(멱등).")
@@ -106,10 +110,8 @@ class LikeFacadeIntegrationTest {
             likeFacade.createLike(user.getId(), product.getId());
 
             // assert
-            assertAll(
-                () -> assertThat(likeCountOf(product.getId())).isEqualTo(1),
-                () -> assertThat(likeJpaRepository.count()).isEqualTo(1L)
-            );
+            assertThat(likeJpaRepository.count()).isEqualTo(1L);
+            awaitLikeCount(product.getId(), 1);
         }
     }
 
@@ -117,7 +119,7 @@ class LikeFacadeIntegrationTest {
     @Nested
     class DeleteLike {
 
-        @DisplayName("좋아요 수가 실제 좋아요 행 수와 일치하도록 감소한다.")
+        @DisplayName("좋아요 수가 실제 좋아요 행 수와 일치하도록 비동기로 감소한다.")
         @Test
         void decrementsLikeCount_toMatchActualLikes() {
             // arrange
@@ -126,15 +128,14 @@ class LikeFacadeIntegrationTest {
             ProductModel product = saveProduct();
             likeFacade.createLike(user1.getId(), product.getId());
             likeFacade.createLike(user2.getId(), product.getId());
+            awaitLikeCount(product.getId(), 2);
 
             // act
             likeFacade.deleteLike(user1.getId(), product.getId());
 
             // assert
-            assertAll(
-                () -> assertThat(likeCountOf(product.getId())).isEqualTo(1),
-                () -> assertThat(likeJpaRepository.count()).isEqualTo(1L)
-            );
+            assertThat(likeJpaRepository.count()).isEqualTo(1L);
+            awaitLikeCount(product.getId(), 1);
         }
 
         @DisplayName("좋아요 기록이 없는 상품을 취소해도 좋아요 수가 음수가 되지 않는다(멱등).")
@@ -148,10 +149,9 @@ class LikeFacadeIntegrationTest {
             likeFacade.deleteLike(user.getId(), product.getId());
 
             // assert
-            assertAll(
-                () -> assertThat(likeCountOf(product.getId())).isEqualTo(0),
-                () -> assertThat(likeJpaRepository.count()).isEqualTo(0L)
-            );
+            assertThat(likeJpaRepository.count()).isEqualTo(0L);
+            await().during(Duration.ofMillis(500))
+                .untilAsserted(() -> assertThat(likeCountOf(product.getId())).isEqualTo(0));
         }
     }
 }
