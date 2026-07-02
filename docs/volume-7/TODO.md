@@ -242,12 +242,15 @@ flowchart TD
 
 **목표:** DB 쓰기와 Kafka 발행의 원자성 구멍(Dual Write)을 메운다.
 
-- [ ] **Outbox 테이블** — `event_id`, `aggregate_type`, `aggregate_id`(=partition key), `event_type`, `payload`(JSON), 발행 상태, `occurred_at`
-- [ ] **Outbox 저장 = 비즈니스 트랜잭션 안** (직접 저장 또는 `BEFORE_COMMIT` 리스너) — 비즈니스 변경과 원자적
-- [ ] **relay = `@Scheduled` 폴링(1초)** — 미발행 조회 → Kafka 발행 → **발행 성공 확인 후에만** 발행 완료 표시. 실패 시 다음 주기 재시도(At Least Once)
-- [ ] relay 발행을 fire-and-forget으로 두지 않는다 (성공 콜백/블로킹 확인 후 마킹)
+- [x] **Outbox 테이블** — `outbox_events`: `event_id`(UNIQUE), `topic`, `partition_key`(=집계 대상 id), `event_type`, `payload`(envelope JSON: eventId·eventType·aggregateId·occurredAt·data), `published_at`(null=미발행)
+- [x] **Outbox 저장 = `BEFORE_COMMIT` 리스너** — 기존 in-app 도메인 이벤트 발행을 재사용해 `OutboxEventRecorder`가 같은 트랜잭션 안에서 INSERT (Facade 코드 무변경). LIKE_CREATED/LIKE_DELETED → catalog-events, ORDER_CREATED(항목 스냅샷 포함) → order-events
+- [x] **relay = `@Scheduled` 폴링(1초)** — 미발행 오래된 순 100건 → `send().get()` 동기 확인 → 성공 후에만 `published_at` 마킹. 실패 시 `break`로 뒤 항목도 함께 다음 주기 재시도(파티션 내 순서 보존, At Least Once — 마킹 실패 시 중복 발행 가능성은 Stage 7 컨슈머 멱등이 흡수)
+- [x] fire-and-forget 금지 — `KafkaMessagePublisher`가 블로킹 확인 후 반환
+- [x] **plan 수정(사실 반영):** `PRODUCT_VIEWED`는 Outbox를 우회해 Kafka **직접 발행**(`AFTER_COMMIT`+`@Async`). 조회는 readOnly 트랜잭션이라 BEFORE_COMMIT INSERT가 불가하고, 조회 수는 유실 허용(At Most Once)이 자연스러움. `OrderCreatedEvent`에 판매 집계용 items(productId·quantity) 스냅샷 추가
 
-**검증:** 비즈니스 커밋과 Outbox 기록이 함께 성공/롤백된다. relay가 죽었다 살아나도 미발행분이 재전달된다.
+**검증:** 비즈니스 커밋과 Outbox 기록이 함께 성공/롤백된다. 발행 실패 시 미발행으로 남아 다음 주기에 재전달된다. ✅ `OutboxIntegrationTest` (스케줄링은 test 프로파일 비활성이라 relay를 직접 호출해 결정론적으로 검증)
+
+> **알려진 한계:** 역직렬화 불가능한 poison 행이 생기면 relay가 그 지점에서 매 주기 멈춘다(우리가 직렬화한 페이로드라 실질 발생 가능성은 낮음). DLQ/격리는 범위 밖으로 기록.
 
 ---
 
