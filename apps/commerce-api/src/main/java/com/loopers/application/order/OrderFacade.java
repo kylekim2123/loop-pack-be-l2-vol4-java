@@ -63,7 +63,10 @@ public class OrderFacade {
             .build();
 
         OrderModel savedOrder = orderRepository.save(order, orderItems);
-        eventPublisher.publishEvent(OrderCreatedEvent.of(savedOrder.getId(), user.getId(), savedOrder.getFinalAmount()));
+        List<OrderCreatedEvent.Item> eventItems = orderItems.stream()
+            .map(orderItem -> new OrderCreatedEvent.Item(orderItem.getProductId(), orderItem.getQuantity().value()))
+            .toList();
+        eventPublisher.publishEvent(OrderCreatedEvent.of(savedOrder.getId(), user.getId(), savedOrder.getFinalAmount(), eventItems));
 
         return OrderInfo.of(savedOrder, orderItems);
     }
