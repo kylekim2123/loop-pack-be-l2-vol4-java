@@ -258,13 +258,15 @@ flowchart TD
 
 **목표:** 이벤트를 소비해 `product_metrics`에 집계하고, 중복·순서 뒤바뀜을 방어한다.
 
-- [ ] **`@KafkaListener` + manual Ack** — 처리 완료 후 `acknowledge()`
-- [ ] **`event_handled(event_id PK)` 멱등** — 이미 처리된 이벤트는 skip. 처리 기록과 집계 쓰기를 원자적으로
-- [ ] **`product_metrics` 원자 upsert** — 좋아요 수 / 판매량 / 조회 수. `INSERT ... ON DUPLICATE KEY UPDATE +delta`
-- [ ] **`occurred_at`/version stale 가드** — 순서 뒤바뀐 이벤트는 최신값을 덮어쓰지 않음
-- [ ] "왜 핸들링 테이블(`event_handled`)과 로그 테이블을 분리하는가" 근거 기록 — 멱등 판정용 최소 상태 vs 감사·재처리용 이력의 책임 분리
+- [x] **`@KafkaListener` + manual Ack** — `ProductMetricsConsumer`가 catalog/order 토픽을 배치 소비, 배치 전체 처리 후 `acknowledge()`. 중간 실패 시 미ack → 재전달(이미 처리분은 멱등이 흡수)
+- [x] **`event_handled(event_id UNIQUE)` 멱등** — 처리 기록과 집계 쓰기를 한 트랜잭션(`ProductMetricsAggregator.aggregate`)으로 묶음. 이미 처리된 eventId는 skip
+- [x] **`product_metrics` 원자 upsert** — `INSERT ... ON DUPLICATE KEY UPDATE +delta` (like/sales/view). like_count는 `GREATEST(0, ...)` 바닥 방어
+- [x] **결정 변경(사실 반영): 스킵형 stale 가드 → watermark 유지로 교정** — 우리 이벤트는 전부 증분(delta)이라 순서 교환이 가능하고, "과거 이벤트 무시"는 곧 카운트 유실이다. 재전달 중복은 `event_handled`가, 같은 상품 내 순서는 파티션 키(productId)가 이미 담보. `last_event_at`은 `GREATEST()`로 최신 시각만 유지(관측용 watermark). 스킵형 가드는 상태(스냅샷) 이벤트에만 유효 — 현재 상태 이벤트 없음
+- [x] 핸들링 테이블과 로그 테이블 분리 질문 — **이번 구현은 `event_handled`(멱등 판정용 최소 상태)만 둔다.** 감사·재처리용 원본 이력은 발행 측 `outbox_events`가 이미 보존하므로 소비 측 로그 테이블은 중복 책임
 
-**검증:** 같은 이벤트를 두 번 보내도 집계는 한 번만 반영된다. 순서가 뒤바뀐 stale 이벤트는 무시된다.
+**검증:** 같은 이벤트를 두 번 보내도 집계는 한 번만 반영. 델타는 순서가 뒤바뀌어도 유실 없이 반영되고 watermark는 최신 유지. ✅ `ProductMetricsConsumerIntegrationTest` (producer→실 Kafka→consumer 관통)
+
+> **알려진 한계:** 역직렬화 불가 poison 메시지는 미ack 무한 재시도로 파티션을 막는다. DLQ/DLT는 의도적 범위 밖(아래 "안 하는 것" 참조).
 
 ---
 
