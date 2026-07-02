@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.loopers.application.event.ConsumedEvent;
 import com.loopers.domain.event.EventHandledModel;
 import com.loopers.domain.event.EventHandledRepository;
 import com.loopers.domain.metrics.ProductMetricsRepository;

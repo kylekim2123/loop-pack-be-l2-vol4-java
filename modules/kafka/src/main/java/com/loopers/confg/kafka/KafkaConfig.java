@@ -21,6 +21,7 @@ import java.util.Map;
 @EnableConfigurationProperties(KafkaProperties.class)
 public class KafkaConfig {
     public static final String BATCH_LISTENER = "BATCH_LISTENER_DEFAULT";
+    public static final String SINGLE_LISTENER = "SINGLE_LISTENER_DEFAULT";
 
     public static final int MAX_POLLING_SIZE = 3000; // read 3000 msg
     public static final int FETCH_MIN_BYTES = (1024 * 1024); // 1mb
@@ -70,6 +71,19 @@ public class KafkaConfig {
         factory.setBatchMessageConverter(new BatchMessagingMessageConverter(converter));
         factory.setConcurrency(3);
         factory.setBatchListener(true);
+        return factory;
+    }
+
+    @Bean(name = SINGLE_LISTENER)
+    public ConcurrentKafkaListenerContainerFactory<Object, Object> defaultSingleListenerContainerFactory(
+            KafkaProperties kafkaProperties
+    ) {
+        Map<String, Object> consumerConfig = new HashMap<>(kafkaProperties.buildConsumerProperties());
+
+        ConcurrentKafkaListenerContainerFactory<Object, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(consumerConfig));
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL); // 수동 커밋
+        factory.setConcurrency(1); // 선착순 등 순차 처리 전용
         return factory;
     }
 }
