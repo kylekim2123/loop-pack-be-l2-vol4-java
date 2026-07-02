@@ -19,4 +19,13 @@ public interface CouponV1ApiSpec {
         Long couponId,
         @Parameter(hidden = true) @LoginUser AuthenticatedUser loginUser
     );
+
+    @Operation(
+        summary = "쿠폰 발급 결과 조회",
+        description = "requestId로 본인 발급 요청의 진행 상태(PENDING/SUCCESS/FAILED)와 실패 사유를 조회한다."
+    )
+    ApiResponse<CouponV1Dto.IssueRequestResponse> readCouponIssueRequest(
+        Long requestId,
+        @Parameter(hidden = true) @LoginUser AuthenticatedUser loginUser
+    );
 }

@@ -88,6 +88,11 @@ public class CouponFacade {
     }
 
     @Transactional(readOnly = true)
+    public CouponIssueRequestInfo readCouponIssueRequest(Long userId, Long requestId) {
+        return CouponIssueRequestInfo.from(couponIssueRequestRepository.getActiveByIdAndUserId(requestId, userId));
+    }
+
+    @Transactional(readOnly = true)
     public Page<CouponAdminInfo> readCoupons(int page, int size) {
         return couponRepository.findActiveByPage(page, size)
             .map(CouponAdminInfo::from);
