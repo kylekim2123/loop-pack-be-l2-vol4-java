@@ -201,12 +201,12 @@ flowchart TD
 
 **목표:** 부가 로직(외부 전송·로깅)을 이벤트로 빼되, 정합성이 필요한 쿠폰 사용은 동기로 남긴다.
 
-- [ ] **데이터플랫폼 전송 포트(Mock)** — 주문/결제 완료 시 외부 전송. `@Async`, 트랜잭션 없음. 실패해도 본류 무영향. 테스트는 Mock sender 수집 단언
-- [ ] **유저 행동 로깅** — 조회·좋아요·주문 등을 행동 로깅 이벤트로 (`@Async`)
-- [ ] **쿠폰 사용은 동기 유지** — `OrderFacade`의 낙관락 처리 그대로. 이벤트로 빼지 않음(판단 근거 명시)
-- [ ] 각 핸들러에 "왜 이 phase/async인지" 한 문장씩 근거
+- [x] **데이터플랫폼 전송 포트(Mock)** — `domain.dataplatform.DataPlatformSender` 포트 + `infrastructure` 로그 Mock 구현(`PaymentGateway` 패턴). `OrderCreatedEvent`(주문 커밋 후)·`PaymentSucceededEvent`(결제 확정 승자 커밋 후)를 `DataPlatformEventHandler`(`AFTER_COMMIT` + `@Async`, DB 안 쓰므로 트랜잭션 없음)가 전송. 실패해도 본류 무영향
+- [x] **유저 행동 로깅** — 도메인별 개별 이벤트 구독(`UserActivityEventHandler`): `ProductViewedEvent`(상세 조회, 공개 엔드포인트라 userId 없이 productId만) · `LikeCreatedEvent`/`LikeDeletedEvent`(행동 로깅 겸용으로 userId enrich) · `OrderCreatedEvent`. 통합 이벤트 대신 개별 구독을 택한 근거 — Stage 2와 일관된 타입 기반 디스패치, 기존 이벤트 재사용
+- [x] **쿠폰 사용은 동기 유지** — `OrderFacade`의 낙관락 처리 그대로. 할인액이 `finalAmount` 산정에 즉시 필요해 원자적일 수밖에 없고, 분리 시 주문을 되돌리는 보상이 필요해져 배보다 배꼽이 커짐 (Stage 0 분해표 근거)
+- [x] 각 핸들러의 phase/async 근거 — 데이터플랫폼·로깅 모두 "실패해도 본류 성립 + 상태 변경 아님 + (전송은) 시스템 경계" → `AFTER_COMMIT`+`@Async`. DB를 쓰지 않으므로 `REQUIRES_NEW` 불필요(집계 핸들러와 대비)
 
-**검증:** 데이터플랫폼 전송·로깅이 실패해도 주문/결제는 정상. 쿠폰 사용은 여전히 주문 트랜잭션 안에서 동기 확정.
+**검증:** 데이터플랫폼 전송이 실패해도 주문은 커밋 유지(`keepsOrderCommitted_whenSendFails`). 전송·로깅 모두 전용 이벤트 스레드에서 비동기 실행. 쿠폰 사용은 여전히 주문 트랜잭션 안에서 동기 확정. ✅ `DataPlatformEventHandlerIntegrationTest` · `UserActivityEventHandlerIntegrationTest`
 
 ---
 
