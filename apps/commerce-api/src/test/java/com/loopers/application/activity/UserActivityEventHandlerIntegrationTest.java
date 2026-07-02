@@ -153,6 +153,7 @@ class UserActivityEventHandlerIntegrationTest {
         // assert
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
             then(userActivityEventHandler).should()
-                .logOrderCreated(OrderCreatedEvent.of(orderInfo.orderId(), user.getId(), 78_000)));
+                .logOrderCreated(OrderCreatedEvent.of(orderInfo.orderId(), user.getId(), 78_000,
+                    List.of(new OrderCreatedEvent.Item(product.getId(), 2)))));
     }
 }

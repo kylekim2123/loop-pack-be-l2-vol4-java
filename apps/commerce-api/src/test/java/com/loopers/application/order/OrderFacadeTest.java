@@ -127,6 +127,7 @@ class OrderFacadeTest {
         void returnsOrderInfo_andPublishesOrderCreatedEvent_whenStockIsSufficient() {
             // arrange
             ProductModel product = product(39_000);
+            ReflectionTestUtils.setField(product, "id", productId);
             List<OrderItemCommand> itemCommands = List.of(new OrderItemCommand(productId, 2));
             UserModel user = mock(UserModel.class);
             given(user.getId()).willReturn(userId);
@@ -152,7 +153,8 @@ class OrderFacadeTest {
                 () -> assertThat(orderInfo.userCouponId()).isNull(),
                 () -> assertThat(product.getStock().value()).isEqualTo(48),
                 () -> then(orderRepository).should().save(any(OrderModel.class), anyList()),
-                () -> then(eventPublisher).should().publishEvent(OrderCreatedEvent.of(100L, userId, 78_000))
+                () -> then(eventPublisher).should().publishEvent(
+                    OrderCreatedEvent.of(100L, userId, 78_000, List.of(new OrderCreatedEvent.Item(productId, 2))))
             );
         }
 
