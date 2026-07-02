@@ -12,10 +12,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public interface CouponV1ApiSpec {
 
     @Operation(
-        summary = "쿠폰 발급",
-        description = "회원이 특정 쿠폰 템플릿으로부터 자신의 쿠폰 한 장을 발급받는다. 발급 시점 템플릿 정보를 스냅샷으로 기록하며, 한 템플릿에서 한 장만 발급받을 수 있다."
+        summary = "쿠폰 발급 요청 접수",
+        description = "회원의 쿠폰 발급 요청을 접수하고 requestId를 즉시 반환한다. 실제 발급은 비동기로 처리되며, requestId로 결과를 조회할 수 있다."
     )
-    ApiResponse<CouponV1Dto.IssueResponse> issueCoupon(
+    ApiResponse<CouponV1Dto.IssueRequestResponse> createCouponIssueRequest(
         Long couponId,
         @Parameter(hidden = true) @LoginUser AuthenticatedUser loginUser
     );

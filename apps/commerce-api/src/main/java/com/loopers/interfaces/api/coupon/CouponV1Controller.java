@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.loopers.application.coupon.CouponFacade;
-import com.loopers.application.coupon.UserCouponIssueInfo;
+import com.loopers.application.coupon.CouponIssueRequestInfo;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.auth.AuthenticatedUser;
 import com.loopers.interfaces.api.auth.LoginUser;
@@ -26,13 +26,13 @@ public class CouponV1Controller implements CouponV1ApiSpec {
 
     @Override
     @PostMapping("/{couponId}/issue")
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<CouponV1Dto.IssueResponse> issueCoupon(
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<CouponV1Dto.IssueRequestResponse> createCouponIssueRequest(
         @PathVariable Long couponId,
         @LoginUser AuthenticatedUser loginUser
     ) {
-        UserCouponIssueInfo issueInfo = couponFacade.issueCoupon(loginUser.userId(), couponId, dateTimeUtil.now());
+        CouponIssueRequestInfo issueRequestInfo = couponFacade.createCouponIssueRequest(loginUser.userId(), couponId, dateTimeUtil.now());
 
-        return ApiResponse.success(CouponV1Dto.IssueResponse.from(issueInfo));
+        return ApiResponse.success(CouponV1Dto.IssueRequestResponse.from(issueRequestInfo));
     }
 }

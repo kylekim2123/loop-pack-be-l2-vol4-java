@@ -8,6 +8,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.loopers.domain.coupon.CouponIssueRequestedEvent;
 import com.loopers.domain.like.LikeCreatedEvent;
 import com.loopers.domain.like.LikeDeletedEvent;
 import com.loopers.domain.order.OrderCreatedEvent;
@@ -43,6 +44,11 @@ public class OutboxEventRecorder {
     @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
     public void recordOrderCreated(OrderCreatedEvent event) {
         record(KafkaTopicConfig.ORDER_EVENTS_TOPIC, OutboxEventType.ORDER_CREATED, event.orderId(), event);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    public void recordCouponIssueRequested(CouponIssueRequestedEvent event) {
+        record(KafkaTopicConfig.COUPON_ISSUE_REQUESTS_TOPIC, OutboxEventType.COUPON_ISSUE_REQUESTED, event.couponId(), event);
     }
 
     private void record(String topic, OutboxEventType eventType, Long aggregateId, Object data) {

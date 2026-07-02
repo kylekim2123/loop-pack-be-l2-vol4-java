@@ -3,6 +3,8 @@ package com.loopers.domain.coupon;
 import java.time.ZonedDateTime;
 
 import com.loopers.domain.BaseEntity;
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -23,6 +25,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor(access = AccessLevel.PROTECTED)
 public class CouponModel extends BaseEntity {
 
+    private static final int MIN_MAX_QUANTITY = 1;
+
     @Embedded
     private Name name;
 
@@ -39,14 +43,25 @@ public class CouponModel extends BaseEntity {
     @Embedded
     private ExpiredAt expiredAt;
 
+    @Column(name = "max_quantity")
+    private Integer maxQuantity;
+
+    @Column(name = "issued_count", nullable = false)
+    private int issuedCount;
+
     @Builder
-    private CouponModel(String rawName, DiscountType type, Integer rawValue, Integer rawMinOrderAmount, ZonedDateTime rawExpiredAt, ZonedDateTime now) {
+    private CouponModel(String rawName, DiscountType type, Integer rawValue, Integer rawMinOrderAmount, ZonedDateTime rawExpiredAt, ZonedDateTime now, Integer maxQuantity) {
         this.name = Name.from(rawName);
         this.type = type;
         type.validate(rawValue);
         this.discountValue = rawValue;
         this.minOrderAmount = MinOrderAmount.from(rawMinOrderAmount);
         this.expiredAt = ExpiredAt.of(rawExpiredAt, now);
+        if (maxQuantity != null && maxQuantity < MIN_MAX_QUANTITY) {
+            throw new CoreException(ErrorType.BAD_REQUEST, String.format("최대 발급 수량은 %d 이상만 허용됩니다.", MIN_MAX_QUANTITY));
+        }
+        this.maxQuantity = maxQuantity;
+        this.issuedCount = 0;
     }
 
     public void update(String rawName, DiscountType type, Integer rawValue, Integer rawMinOrderAmount, ZonedDateTime rawExpiredAt, ZonedDateTime now) {

@@ -3,14 +3,17 @@ package com.loopers.application.coupon;
 import java.time.ZonedDateTime;
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.loopers.domain.coupon.CouponIssueRequestModel;
+import com.loopers.domain.coupon.CouponIssueRequestRepository;
+import com.loopers.domain.coupon.CouponIssueRequestedEvent;
 import com.loopers.domain.coupon.CouponModel;
 import com.loopers.domain.coupon.CouponRepository;
 import com.loopers.domain.coupon.DiscountType;
-import com.loopers.domain.coupon.UserCouponModel;
 import com.loopers.domain.coupon.UserCouponRepository;
 import com.loopers.domain.user.UserModel;
 import com.loopers.domain.user.UserRepository;
@@ -27,6 +30,8 @@ public class CouponFacade {
     private final UserRepository userRepository;
     private final CouponRepository couponRepository;
     private final UserCouponRepository userCouponRepository;
+    private final CouponIssueRequestRepository couponIssueRequestRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CouponCreateInfo createCoupon(
         String name,
@@ -67,7 +72,7 @@ public class CouponFacade {
         couponRepository.findActiveById(couponId).ifPresent(CouponModel::delete);
     }
 
-    public UserCouponIssueInfo issueCoupon(Long userId, Long couponId, ZonedDateTime now) {
+    public CouponIssueRequestInfo createCouponIssueRequest(Long userId, Long couponId, ZonedDateTime now) {
         UserModel user = userRepository.getActiveById(userId);
         CouponModel coupon = couponRepository.getActiveById(couponId);
 
@@ -75,13 +80,11 @@ public class CouponFacade {
             throw new CoreException(ErrorType.CONFLICT, "만료된 쿠폰 템플릿은 발급할 수 없습니다.");
         }
 
-        if (userCouponRepository.existsByUserIdAndCouponId(user.getId(), coupon.getId())) {
-            throw new CoreException(ErrorType.CONFLICT, "이미 발급받은 쿠폰입니다.");
-        }
+        CouponIssueRequestModel issueRequest = couponIssueRequestRepository.save(
+            CouponIssueRequestModel.of(user.getId(), coupon.getId()));
+        eventPublisher.publishEvent(CouponIssueRequestedEvent.of(issueRequest.getId(), user.getId(), coupon.getId()));
 
-        UserCouponModel issuedCoupon = UserCouponModel.issue(user.getId(), coupon);
-
-        return UserCouponIssueInfo.from(userCouponRepository.save(issuedCoupon));
+        return CouponIssueRequestInfo.from(issueRequest);
     }
 
     @Transactional(readOnly = true)
