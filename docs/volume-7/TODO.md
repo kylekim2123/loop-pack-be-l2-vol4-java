@@ -290,12 +290,13 @@ flowchart TD
 
 **목표:** 선착순 수량을 표현하고, 발급 요청을 Kafka로 비동기 접수한다.
 
-- [ ] `CouponModel`에 **`maxQuantity` + `issuedCount`** 추가
-- [ ] **`CouponIssueRequest` 도메인**(PENDING/SUCCESS/FAILED) — UserCoupon과 분리
-- [ ] **발급 요청 API** `POST /coupons/{couponId}/issue` — 요청(PENDING) 저장 + Outbox 기록을 한 트랜잭션 → `requestId` 반환(즉시 응답)
-- [ ] Outbox relay → `coupon-issue-requests`(key=couponId) 발행
+- [x] `CouponModel`에 **`maxQuantity`(nullable=무제한) + `issuedCount`** 추가 — 관리자 생성/수정 API 확장은 범위 밖(한정 쿠폰은 시드/픽스처로 생성)
+- [x] **`CouponIssueRequestModel`**(PENDING/SUCCESS/FAILED + 실패 reason) — UserCoupon과 분리
+- [x] **발급 요청 API** `POST /coupons/{couponId}/issue` — **기존 동기 발급을 비동기 접수로 대체**(202 Accepted + requestId). 요청(PENDING) 저장 + `CouponIssueRequestedEvent` → BEFORE_COMMIT Outbox 기록이 한 트랜잭션. 접수는 얇게: 템플릿 존재·만료만 조기 실패, 중복 발급 판정은 컨슈머의 UNIQUE 최종 방어로 미룸(접수 경로 DB 조회 최소화)
+- [x] Outbox relay → `coupon-issue-requests`(key=couponId, partitions=1) 발행 — Stage 6 경로 재사용
+- [x] 기존 동기 발급 테스트 이관 — Facade 단위는 접수 검증으로, E2E는 202+requestId 컨트랙트로 교체. "이미 발급" 409 케이스는 비동기 특성상 접수 통과 → Stage 11 polling FAILED 검증으로 이동
 
-**검증:** 발급 요청이 즉시 `requestId`와 함께 접수되고, 요청 상태와 Outbox가 원자적으로 저장된다.
+**검증:** 발급 요청이 즉시 `requestId`와 함께 접수되고, 요청 상태와 Outbox가 원자적으로 저장된다. ✅ `CouponFacadeTest` · `CouponV1ApiE2ETest` · `OutboxIntegrationTest`
 
 ---
 
