@@ -304,13 +304,13 @@ flowchart TD
 
 **목표:** 수량을 초과하지 않고 중복 없이 발급한다.
 
-- [ ] **commerce-streamer Consumer, concurrency=1 순차** (SINGLE_LISTENER, manual Ack)
-- [ ] **`event_handled` 멱등** 선체크
-- [ ] **조건부 UPDATE** — `UPDATE coupon SET issued_count = issued_count + 1 WHERE id = ? AND issued_count < max_quantity`. affected==0이면 소진 → FAILED (vol6 Stage 7 패턴 재사용)
-- [ ] **`UserCoupon` 저장** — `UNIQUE(user_id, coupon_id)` 위반 시 중복 → FAILED (최종 방어)
-- [ ] `CouponIssueRequest` SUCCESS/FAILED 전이
+- [x] **commerce-streamer Consumer, concurrency=1 순차** — `KafkaConfig`에 `SINGLE_LISTENER`(record 모드·manual Ack·concurrency=1) 신설, `CouponIssueConsumer`가 사용
+- [x] **`event_handled` 멱등** 선체크 — 처리 기록과 발급 쓰기를 한 트랜잭션(`CouponIssueProcessor.process`)
+- [x] **조건부 UPDATE(CAS)** — `issued_count + 1 WHERE (max_quantity IS NULL OR issued_count < max_quantity)`. affected==0 → 소진 FAILED
+- [x] **중복 방어** — EXISTS 선체크로 FAILED("이미 발급") + `UNIQUE(user_id, coupon_id)` 최종 방어(위반 시 트랜잭션 전체 롤백 → 재전달 시 EXISTS가 종결). streamer는 엔티티 중복 정의 대신 JdbcTemplate 네이티브 SQL로 소유 앱(api) 테이블에 접근
+- [x] `CouponIssueRequest` SUCCESS/FAILED(사유 포함) 전이
 
-**검증:** 정확성은 조건부 UPDATE + UNIQUE가 담보한다(순차는 보조). 동시성 테스트로 초과·중복 0건 확인.
+**검증:** 수량 5장에 20명 동시 요청 → 성공 정확히 5, 초과·중복 0건(CAS + UNIQUE 담보, 순차는 보조). 같은 이벤트 재처리에도 발급 1회. ✅ `CouponIssueConsumerIntegrationTest` (Kafka 관통 + Processor 동시성)
 
 ---
 
