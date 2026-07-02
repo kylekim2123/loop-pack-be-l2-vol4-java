@@ -42,7 +42,7 @@
 | 주제 | 결정 | 근거 |
 |---|---|---|
 | 분리 기준 | **정합성 필요 = 동기 / 후속·집계·전송·로깅 = 비동기.** 쿠폰 사용·재고 차감은 동기 유지 | "무조건 이벤트" 가 아니라 자원 특성별 차등. 상태 변경을 비동기로 빼면 정합성 창(window)이 생긴다 |
-| 이벤트 구조 | **도메인 record 이벤트 + `ApplicationEventPublisher` 직접 발행(Facade) + 리스너(interfaces 얇은 어댑터) / 핸들러(application 로직) 분리** | 발행은 이미 Spring에 종속된 Facade가 하고 도메인은 JPA 엔티티라 별도 Publisher 인터페이스(DIP)는 순수 보일러플레이트. 수신 로직만 핸들러로 빼 테스트를 쉽게 |
+| 이벤트 구조 | **사실 단위로 나눈 도메인 record 이벤트(과거형 타입명) + `ApplicationEventPublisher` 직접 발행(Facade) + application 단일 핸들러(전달 어노테이션 + 반응 로직)** | 발행은 이미 Spring에 종속된 Facade가 하고 도메인은 JPA 엔티티라 별도 Publisher 인터페이스(DIP)는 순수 보일러플레이트. ~~리스너(interfaces)/핸들러(application) 분리~~ → **결정 변경(Stage 1 구현 후):** in-app 이벤트는 같은 JVM에서 도메인 record가 그대로 전달되어 어댑터가 번역할 게 없고, 리스너에 포워딩 한 줄만 남아 분리 이득이 없음. 핸들러 하나에 `@TransactionalEventListener` + `@Async` + 로직을 함께 둠(실무 다수파 형태). ~~단일 `LikeChangedEvent` + `LikeChangeType` enum~~ → **결정 변경(Stage 2 구현 후):** `LikeCreatedEvent`/`LikeDeletedEvent`로 재분리. 이벤트 타입명은 과거형 사실(`OrderCreatedEvent`류 관례)이어야 하고, Spring 리스너 디스패치가 페이로드 타입 기반이라 나누면 핸들러가 타입별로 갈려 switch·enum이 통째로 사라짐(타입 안전 + 완전성 검사 확보) |
 | 트랜잭션 phase | 정합성 필요 = 동기 / 후속 = `@TransactionalEventListener(AFTER_COMMIT)` + `@Async`, DB 쓰기 핸들러만 `REQUIRES_NEW` | 커밋 이후 실행 보장 + 후속 실패가 본류를 롤백하지 않게 격리 |
 | AsyncConfig | **전용 스레드풀**(core/max/queue) + `CallerRunsPolicy` + graceful shutdown | 기본 executor는 스레드 무한 생성·유실 위험. 큐 포화 시 호출 스레드가 직접 실행해 유실 대신 지연 |
 | 보상 트랜잭션 | 결제 확정 실패 → `PaymentFailedEvent` → **재고 복원·쿠폰 복원 핸들러**(비동기). 재고 차감 시점은 **주문 시점 유지**(후차감 안 함) | 결제 실패 시 재고·쿠폰이 영구 미복구되는 vol6 한계를 이벤트로 메움. 후차감은 oversell 창을 열어 회피 |
@@ -129,25 +129,39 @@ flowchart TD
 
 **목표:** 지금 한 트랜잭션에 묶여 있는 흐름을 목록화하고, 무엇을 끊고 무엇을 동기로 남길지 자원 특성별로 판단한다.
 
-- [ ] 현재 동기 흐름 목록화 — `OrderFacade.createOrder`(재고 차감 + 쿠폰 사용 + 주문 저장), `LikeFacade`(좋아요 저장 + `incrementLikeCount`), `PaymentTransactionWriter.confirm`(결제 확정 → 주문 상태 전이)
-- [ ] 자원별 동기/비동기 분해표 작성 (아래)
-- [ ] "이걸 이벤트로 분리해야 하는가"의 판단 기준 정리 — ① 실패해도 본류가 성립하는가 ② 즉시 정합성이 필요한 상태 변경인가 ③ 시스템 경계를 넘는가
+- [x] 현재 동기 흐름 목록화 — `OrderFacade.createOrder`(재고 차감 + 쿠폰 사용 + 주문 저장), `LikeFacade`(좋아요 저장 + `incrementLikeCount`), `PaymentTransactionWriter.confirm`(결제 확정 → 주문 상태 전이)
+- [x] 자원별 동기/비동기 분해표 작성 (아래)
+- [x] "이걸 이벤트로 분리해야 하는가"의 판단 기준 정리 — ① 실패해도 본류가 성립하는가 ② 즉시 정합성이 필요한 상태 변경인가 ③ 시스템 경계를 넘는가
 
-**자원별 분해표**
+**현황 — 코드로 확인한 동기 흐름**
 
-| 자원 | 경계 | 근거 |
+| 흐름 | 한 트랜잭션에 묶인 것 | 코드 사실 |
 |---|---|---|
-| 재고 차감 | 동기 | 실패 시 주문이 성립 안 함 |
-| 쿠폰 사용(상태 변경) | 동기 | 비동기로 빼면 이중 사용 창이 생김 |
-| 할인 계산 | 동기 (이벤트 아님) | 주문 금액 산정에 즉시 필요 |
-| 결제 결과 → 주문 상태 전이 | 동기 (confirm 내부) | 승자 판별과 원자적이어야 정확히 한 번 |
-| 결제 실패 → 재고·쿠폰 복원 | 비동기 이벤트 | 후속 보상, 본류 무영향 |
-| 좋아요 집계(like_count) | 비동기 이벤트 | 집계 실패와 무관하게 좋아요 성공 (eventual) |
-| product_metrics 집계 | 비동기 (Kafka) | 시스템 경계, 분석 지연 허용 |
-| 데이터플랫폼 전송 | 비동기 (Mock, 트랜잭션 없음) | 외부 I/O, 본류 무영향 |
-| 유저 행동 로깅 | 비동기 | 본류 무영향 |
+| `OrderFacade.createOrder` | 재고 차감 → 할인 계산 → 쿠폰 사용 → 주문 저장 | 재고는 상품 행 `FOR UPDATE` 비관락(`getActiveByIdForUpdate`) 후 차감. 쿠폰은 낙관락(`@Version`) — 동시 사용 충돌 시 한쪽이 CONFLICT로 롤백. 할인액이 `finalAmount` 산정에 즉시 사용됨 |
+| `LikeFacade.createLike`/`deleteLike` | 좋아요 저장 → `like_count` 증감 | 같은 트랜잭션 — 집계 실패가 좋아요를 롤백시키고, `+1` UPDATE가 주문이 잡은 상품 행 락을 대기할 수 있음 |
+| `PaymentTransactionWriter.confirm` | 승자 판별(조건부 UPDATE) → 주문 상태 전이 | `REQUIRES_NEW` 단일 트랜잭션. 콜백(`PaymentFacade`)·폴링(`PaymentReconciliationService`) 두 경로가 모두 여기로 수렴. **결제 실패 시 재고·쿠폰 복원 코드는 현재 없음** (vol6 한계 그대로 → Stage 4에서 메움) |
 
-**검증:** 모든 이벤트 후보에 대해 위 세 질문의 답이 문서에 남는다. 이 표가 이후 모든 단계 판단의 기준점이 된다.
+**자원별 분해표 (세 질문 답 포함)**
+
+| 자원 | ① 실패해도 본류 성립? | ② 즉시 정합성 상태 변경? | ③ 시스템 경계? | 경계 | 근거 |
+|---|---|---|---|---|---|
+| 재고 차감 | 아니오 — 차감 실패 = 주문 불성립 | 예 | 아니오 | 동기 | 실패 시 주문이 성립 안 함 |
+| 쿠폰 사용(상태 변경) | 아니오 — 사용 실패 시 주문도 생성되면 안 됨 | 예 (낙관락 충돌 → 주문과 함께 롤백) | 아니오 | 동기 | 비동기로 빼면 이중 사용 창이 생김 |
+| 할인 계산 | 아니오 | 예 — 주문 금액 산정에 즉시 필요 | 아니오 | 동기 (이벤트 아님) | 주문 금액 산정에 즉시 필요 |
+| 결제 결과 → 주문 상태 전이 | 아니오 | 예 — 승자 판별과 원자적이어야 정확히 한 번 | 아니오 | 동기 (confirm 내부) | 승자 판별과 원자적이어야 정확히 한 번 |
+| 결제 실패 → 재고·쿠폰 복원 | 예 — 복원이 늦어도 결제 실패 확정은 유효 | 아니오 — 지연 방향이 "덜 팔림"이라 감내 가능 | 아니오 | 비동기 이벤트 | 후속 보상, 본류 무영향 |
+| 좋아요 집계(like_count) | 예 — 집계 실패해도 좋아요는 성공해야 | 아니오 — eventual 허용 | 아니오 | 비동기 이벤트 | 집계 실패와 무관하게 좋아요 성공 (eventual) |
+| product_metrics 집계 | 예 | 아니오 | 예 — streamer가 소비 | 비동기 (Kafka) | 시스템 경계, 분석 지연 허용 |
+| 데이터플랫폼 전송 | 예 | 아니오 (상태 변경 아님) | 예 | 비동기 (Mock, 트랜잭션 없음) | 외부 I/O, 본류 무영향 |
+| 유저 행동 로깅 | 예 | 아니오 | 아니오 (현재는 서버 로그) | 비동기 | 본류 무영향 |
+
+**긴장 지점 세 곳의 판단 과정 (라이팅 소재)**
+
+- **쿠폰 사용을 동기로 남기는 이유** — 할인액이 주문 `finalAmount` 산정에 즉시 들어가므로 쿠폰 확정과 주문 생성은 원자적일 수밖에 없다. 비동기로 빼면 "주문은 생성됐는데 쿠폰 사용은 실패"가 생겨 주문을 되돌리는 보상 트랜잭션이 필요해진다 — 분리가 만드는 복잡도가 분리로 얻는 것보다 크다. 이중 사용 방지는 낙관락(`@Version`)이 담보하고, 동기라서 낙관락 충돌이 곧 주문 롤백으로 이어진다. (참고: `UNIQUE(user_id, coupon_id)`는 사용이 아니라 중복 **발급**을 막는 제약 — Stage 10에서 재사용)
+- **좋아요 집계를 비동기로 빼는 이유** — 지연 때문이 아니다. ⑴ 주문이 상품 행에 `FOR UPDATE` 락을 잡는 동안 `like_count +1` UPDATE가 같은 행 락을 대기해, 좋아요 응답이 주문 트랜잭션 길이의 볼모가 된다. ⑵ 같은 트랜잭션이라 집계 실패가 좋아요를 롤백시킨다. ⑶ 후속 작업이 늘수록(Step 2의 product_metrics 등) 한 트랜잭션의 실패 사유가 함께 누적된다 — 분리는 확장의 디딤돌.
+- **재고 차감은 동기, 복원은 비동기인 이유** — 차감 실패는 주문 불성립 그 자체(본류)라 비동기로 빼면 주문을 되돌리는 보상이 필요해져 배보다 배꼽이 커진다. 복원은 "결제 실패 확정"이라는 본류가 끝난 뒤의 후속이고, 복원이 안 됐다고 결제 실패 확정이 롤백되어서는 안 된다. 복원 지연의 방향은 재고가 실제보다 적게 보이는 쪽(판매 기회 손실)이라 초과판매 같은 정합성 사고가 아니다. 단 복원 *실패*는 영구 구멍이므로 Stage 4에서 최소 로깅 + 한계 명시.
+
+**검증:** 모든 이벤트 후보에 대해 위 세 질문의 답이 문서에 남는다. 이 표가 이후 모든 단계 판단의 기준점이 된다. ✅
 
 ---
 
@@ -155,13 +169,15 @@ flowchart TD
 
 **목표:** 이벤트 발행/구독의 뼈대를 세우고, 후속 로직을 본류 트랜잭션에서 분리한다. (이벤트 객체는 record라 Spring·Kafka 비종속, 발행은 Facade)
 
-- [ ] **도메인 record 이벤트** — 전송·후속에 필요한 만큼만 스냅샷. 생성자 불변식(null 금지). 정적 팩토리(`from`/`of`)
-- [ ] **`ApplicationEventPublisher` 직접 발행(Facade)** — 별도 Publisher 인터페이스 두지 않음. `ApplicationEventPublisher` 자체가 이미 추상이고 발행 지점(Facade)이 이미 Spring 종속이라 한 겹 더 감싸지 않음
-- [ ] **리스너(interfaces 얇은 어댑터) / 핸들러(application 로직) 분리** — 리스너는 호출만, 로직은 핸들러
-- [ ] **AsyncConfig** — `@EnableAsync` + 전용 `ThreadPoolTaskExecutor`(core/max/queue) + `CallerRunsPolicy` + graceful shutdown(`waitForTasksToCompleteOnShutdown`)
-- [ ] 발행 지점은 `@Transactional` 메서드 안 (AFTER_COMMIT 정상 트리거 전제)
+- [x] **도메인 record 이벤트** — 전송·후속에 필요한 만큼만 스냅샷. 생성자 불변식(null 금지). 정적 팩토리(`from`/`of`) → ~~`LikeChangedEvent(productId, changeType)` + `LikeChangeType(LIKED/UNLIKED)`~~ → **`LikeCreatedEvent(productId)` / `LikeDeletedEvent(productId)`로 재분리(결정 변경)**: 과거형 사실 타입명 관례 + 타입 기반 디스패치로 switch·enum 제거
+- [x] **`ApplicationEventPublisher` 직접 발행(Facade)** — 별도 Publisher 인터페이스 두지 않음. `ApplicationEventPublisher` 자체가 이미 추상이고 발행 지점(Facade)이 이미 Spring 종속이라 한 겹 더 감싸지 않음
+- [x] ~~리스너(interfaces 얇은 어댑터) / 핸들러(application 로직) 분리~~ → **application 단일 핸들러로 통합(결정 변경)** — `application.like.LikeEventHandler` 하나에 `@Async` + `@TransactionalEventListener(AFTER_COMMIT)` + `@Transactional(REQUIRES_NEW)` + 집계 로직. in-app 이벤트는 어댑터가 번역할 게 없어 분리 시 포워딩 보일러플레이트만 남았음
+- [x] **AsyncConfig** — `@EnableAsync` + 전용 `ThreadPoolTaskExecutor`(core/max/queue) + `CallerRunsPolicy` + graceful shutdown(`waitForTasksToCompleteOnShutdown`). Boot이 `applicationTaskExecutor`를 따로 띄우므로 `@Async("eventTaskExecutor")` 빈 이름 명시 필수
+- [x] 발행 지점은 `@Transactional` 메서드 안 (AFTER_COMMIT 정상 트리거 전제) — `LikeFacade` 클래스 레벨 `@Transactional` 안에서 발행
 
-**검증:** 이벤트 하나를 발행 → `AFTER_COMMIT` + `@Async` 핸들러가 전용 풀 스레드에서 실행됨을 통합 테스트로 확인.
+**검증:** 이벤트 하나를 발행 → `AFTER_COMMIT` + `@Async` 핸들러가 전용 풀 스레드(`event-` prefix)에서 실행됨을 통합 테스트로 확인. ✅ `LikeEventHandlerIntegrationTest`
+
+> **plan 수정(사실 반영):** dead event 금지 규약 때문에 Stage 1 전용 샘플 이벤트를 만들지 않고, Stage 2의 좋아요 이벤트를 첫 실전 이벤트로 삼아 Stage 1·2를 한 몸으로 구현·검증했다. 이벤트는 처음엔 `LikeChangedEvent`+enum 단일 타입으로 시작했다가, "이벤트 타입명은 과거형 사실이어야 하고 Spring 디스패치가 타입 기반"이라는 판단으로 `LikeCreatedEvent`/`LikeDeletedEvent`로 재분리했다(사용자 논의 후 결정).
 
 ---
 
@@ -169,13 +185,13 @@ flowchart TD
 
 **목표:** 좋아요 저장과 `like_count` 집계를 끊어, 집계가 실패해도 좋아요는 성공하게 한다.
 
-- [ ] `LikeFacade.createLike`/`deleteLike`의 `incrementLikeCount`/`decrementLikeCount` 직접 호출을 **`LikeChangedEvent` 발행**으로 대체
-- [ ] 핸들러(`AFTER_COMMIT` + `@Async` + `REQUIRES_NEW`)가 `products.like_count` 증감 — 집계 실패해도 좋아요는 이미 커밋됨
-- [ ] 상품 조회 응답의 `like_count`는 그대로 노출 (표시·정렬 권위값 유지)
-- [ ] 기존 동기 좋아요 집계·동시성 테스트를 비동기로 이관하고 잔존 제거
-- [ ] `Awaitility`로 비동기 반영 검증
+- [x] `LikeFacade.createLike`/`deleteLike`의 `incrementLikeCount`/`decrementLikeCount` 직접 호출을 **`LikeCreatedEvent`/`LikeDeletedEvent` 발행**으로 대체
+- [x] 핸들러(`AFTER_COMMIT` + `@Async` + `REQUIRES_NEW`)가 `products.like_count` 증감 — 집계 실패해도 좋아요는 이미 커밋됨
+- [x] 상품 조회 응답의 `like_count`는 그대로 노출 (표시·정렬 권위값 유지) — 조회 경로 변경 없음
+- [x] 기존 동기 좋아요 집계·동시성 테스트를 비동기로 이관하고 잔존 제거 — 단위(`LikeFacadeTest`)는 발행 검증으로, 통합(`LikeFacadeIntegrationTest`)은 수렴 대기로 이관. `grep` 잔존 0건(핸들러·테스트 픽스처 시딩만 남음). **동시성 테스트는 애초에 존재하지 않아 이관 대상 없음(사실 반영)**
+- [x] `Awaitility`로 비동기 반영 검증 — `await().untilAsserted` 수렴 대기, 미발생 검증은 `during()` 유지 확인
 
-**검증:** 좋아요 저장은 즉시 성공하고, `like_count`는 잠시 후(수 ms) 반영된다. 집계 핸들러가 실패해도 좋아요 레코드는 남는다.
+**검증:** 좋아요 저장은 즉시 성공하고, `like_count`는 잠시 후(수 ms) 반영된다. 집계 핸들러가 실패해도 좋아요 레코드는 남는다. ✅ `LikeEventHandlerIntegrationTest.keepsLikeCommitted_whenAggregationFails`
 
 > **판단 근거(라이팅 소재):** 이건 지연 때문이 아니다. 단일 `+1`은 마이크로초다. 분리 이유는 ① 좋아요가 주문의 상품 행 `FOR UPDATE` 락에 볼모 잡히지 않게 ② 집계 실패가 좋아요를 롤백하지 않게. 이 규모에선 동기여도 되지만, Step 2의 스트림 집계로 가는 디딤돌이다.
 
