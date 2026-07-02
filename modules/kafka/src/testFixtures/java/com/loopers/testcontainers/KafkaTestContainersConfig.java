@@ -15,5 +15,6 @@ public class KafkaTestContainersConfig {
 
         System.setProperty("spring.kafka.bootstrap-servers", kafkaContainer.getBootstrapServers());
         System.setProperty("spring.kafka.admin.properties.bootstrap.servers", kafkaContainer.getBootstrapServers());
+        System.setProperty("spring.kafka.consumer.properties.auto.offset.reset", "earliest");
     }
 }
