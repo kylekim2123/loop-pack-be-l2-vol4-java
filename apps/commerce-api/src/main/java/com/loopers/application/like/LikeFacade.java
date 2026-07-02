@@ -1,11 +1,14 @@
 package com.loopers.application.like;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.loopers.application.product.ProductSummaryInfo;
+import com.loopers.domain.like.LikeCreatedEvent;
+import com.loopers.domain.like.LikeDeletedEvent;
 import com.loopers.domain.like.LikeModel;
 import com.loopers.domain.like.LikeRepository;
 import com.loopers.domain.product.ProductModel;
@@ -23,6 +26,7 @@ public class LikeFacade {
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final LikeRepository likeRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public void createLike(Long userId, Long productId) {
         UserModel user = userRepository.getActiveById(userId);
@@ -38,7 +42,7 @@ public class LikeFacade {
             .build();
 
         likeRepository.save(like);
-        productRepository.incrementLikeCount(product.getId());
+        eventPublisher.publishEvent(LikeCreatedEvent.from(product.getId()));
     }
 
     public void deleteLike(Long userId, Long productId) {
@@ -47,7 +51,7 @@ public class LikeFacade {
 
         int deletedCount = likeRepository.deleteByUserIdAndProductId(user.getId(), product.getId());
         if (deletedCount > 0) {
-            productRepository.decrementLikeCount(product.getId());
+            eventPublisher.publishEvent(LikeDeletedEvent.from(product.getId()));
         }
     }
 

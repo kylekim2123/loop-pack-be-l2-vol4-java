@@ -1,0 +1,17 @@
+package com.loopers.domain.like;
+
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
+
+public record LikeDeletedEvent(Long productId) {
+
+    public LikeDeletedEvent {
+        if (productId == null) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "상품 ID는 필수입니다.");
+        }
+    }
+
+    public static LikeDeletedEvent from(Long productId) {
+        return new LikeDeletedEvent(productId);
+    }
+}
