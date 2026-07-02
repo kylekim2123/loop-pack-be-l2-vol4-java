@@ -214,13 +214,13 @@ flowchart TD
 
 **목표:** 결제가 확정 실패하면 재고·쿠폰을 이벤트로 복원한다. (vol6의 "결제 실패 시 재고/쿠폰 미복구" 한계 메움)
 
-- [ ] `PaymentTransactionWriter.confirm`에서 **승자(affected==1)만** `PaymentFailedEvent` 발행 (주문 상태 전이는 동기 유지)
-- [ ] **재고 복원 핸들러** — 주문 항목만큼 상품 재고 원복 (`AFTER_COMMIT` + `@Async` + `REQUIRES_NEW`)
-- [ ] **쿠폰 복원 핸들러** — 사용된 `UserCoupon`의 `usedAt`을 되돌림
-- [ ] `PaymentGateway`에 **`cancel` 추가, 구현은 로그만** — 결과 불명으로 폐기 후 폴링이 뒤늦게 SUCCESS를 발견하는 엣지에서 호출
-- [ ] 보상 핸들러 실패 시 정합성 구멍이므로 최소 로깅 + 한계 명시
+- [x] `PaymentTransactionWriter.confirm`에서 **승자(affected==1)만** `PaymentFailedEvent(paymentId, orderId)` 발행 (주문 상태 전이는 동기 유지)
+- [x] **재고 복원 핸들러** — `PaymentCompensationEventHandler.restoreStock`: 주문 항목만큼 상품 행 `FOR UPDATE` 후 원복 (`AFTER_COMMIT` + `@Async` + `REQUIRES_NEW`). `Stock.increase`/`ProductModel.increaseStock` 신설
+- [x] **쿠폰 복원 핸들러** — `restoreCoupon`: 주문의 `userCouponId`로 `UserCoupon.restore()`(usedAt 초기화)
+- [x] `PaymentGateway.cancel` 추가, **구현은 로그만** — `confirm`에서 패배(affected==0)했는데 결과가 SUCCESS이고 기존 확정이 FAILED인 경우(폐기 후 뒤늦게 SUCCESS 발견) 호출. **한계:** 스텁이 확정 트랜잭션 안에서 호출됨 — 실 PG 취소 API라면 커밋 후 별도 경로(재시도 포함)로 빼야 함
+- [x] 보상 핸들러 실패 시 처리 — 핸들러 예외는 `REQUIRES_NEW` 전체 롤백(부분 복원 방지) 후 async 예외 로거가 기록. **한계:** 재처리 경로 없음 — 복원 실패는 로그로만 남고 영구 구멍(운영이라면 DLQ/재시도 필요, 범위 밖)
 
-**검증:** 결제 확정 실패 시 주문은 `PAYMENT_FAILED`로 전이되고(삭제 아님), 재고·쿠폰이 복원된다. 승자만 발행하므로 복원도 정확히 한 번.
+**검증:** 결제 확정 실패 시 주문은 `PAYMENT_FAILED`로 전이되고(삭제 아님), 재고·쿠폰이 복원된다. 두 번 확정해도 복원은 정확히 한 번. 뒤늦은 SUCCESS 발견 시 PG cancel 호출. ✅ `PaymentCompensationEventHandlerIntegrationTest`
 
 ---
 
