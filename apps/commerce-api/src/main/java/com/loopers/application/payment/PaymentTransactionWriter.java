@@ -7,6 +7,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.loopers.domain.order.OrderModel;
 import com.loopers.domain.order.OrderRepository;
+import com.loopers.domain.payment.PaymentFailedEvent;
+import com.loopers.domain.payment.PaymentGateway;
 import com.loopers.domain.payment.PaymentModel;
 import com.loopers.domain.payment.PaymentRepository;
 import com.loopers.domain.payment.PaymentRequestResult;
@@ -22,6 +24,7 @@ public class PaymentTransactionWriter {
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final PaymentGateway paymentGateway;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -30,6 +33,7 @@ public class PaymentTransactionWriter {
 
         int affectedRows = paymentRepository.confirmIfUnresolved(payment.getId(), resolved.status(), resolved.reason());
         if (affectedRows == 0) {
+            cancelIfSucceededAfterFailure(payment.getId(), resolved);
             return false;
         }
 
@@ -39,9 +43,21 @@ public class PaymentTransactionWriter {
             eventPublisher.publishEvent(PaymentSucceededEvent.of(payment.getId(), payment.getOrderId(), payment.getAmount()));
         } else if (resolved.status() == PaymentStatus.FAILED) {
             order.markPaymentFailed();
+            eventPublisher.publishEvent(PaymentFailedEvent.of(payment.getId(), payment.getOrderId()));
         }
 
         return true;
+    }
+
+    private void cancelIfSucceededAfterFailure(Long paymentId, PaymentTransactionStatus resolved) {
+        if (resolved.status() != PaymentStatus.SUCCESS) {
+            return;
+        }
+
+        PaymentModel resolvedPayment = paymentRepository.getById(paymentId);
+        if (resolvedPayment.isFailed()) {
+            paymentGateway.cancel(resolvedPayment);
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

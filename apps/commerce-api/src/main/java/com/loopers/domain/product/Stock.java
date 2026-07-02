@@ -33,4 +33,8 @@ public record Stock(
 
         return new Stock(value - quantity);
     }
+
+    public Stock increase(int quantity) {
+        return new Stock(value + quantity);
+    }
 }

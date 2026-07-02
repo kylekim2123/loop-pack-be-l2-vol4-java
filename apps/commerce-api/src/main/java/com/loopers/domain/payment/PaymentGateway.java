@@ -5,4 +5,6 @@ public interface PaymentGateway {
     PaymentRequestResult requestPayment(PaymentModel payment);
 
     PaymentTransactionStatus queryTransaction(PaymentModel payment);
+
+    void cancel(PaymentModel payment);
 }

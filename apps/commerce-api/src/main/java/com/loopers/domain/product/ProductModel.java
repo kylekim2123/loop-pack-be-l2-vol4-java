@@ -67,4 +67,8 @@ public class ProductModel extends BaseEntity {
     public void decreaseStock(int quantity) {
         this.stock = stock.decrease(quantity);
     }
+
+    public void increaseStock(int quantity) {
+        this.stock = stock.increase(quantity);
+    }
 }

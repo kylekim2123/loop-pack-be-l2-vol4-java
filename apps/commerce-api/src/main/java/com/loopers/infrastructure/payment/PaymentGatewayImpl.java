@@ -61,6 +61,12 @@ public class PaymentGatewayImpl implements PaymentGateway {
         return PaymentTransactionStatus.found(transaction.transactionKey(), PaymentStatus.valueOf(transaction.status()), transaction.reason());
     }
 
+    @Override
+    public void cancel(PaymentModel payment) {
+        log.warn("PG 결제 취소 요청 - pg-simulator에 취소 API가 없어 기록만 남긴다 (orderId={}, paymentId={}, transactionKey={})",
+            payment.getOrderId(), payment.getId(), payment.getTransactionKey());
+    }
+
     private PgSimulatorDto.TransactionResponse queryByTransactionKey(PaymentModel payment) {
         return pgSimulatorClient.getTransaction(String.valueOf(payment.getUserId()), payment.getTransactionKey())
             .data();

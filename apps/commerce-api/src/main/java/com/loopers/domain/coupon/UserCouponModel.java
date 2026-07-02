@@ -97,4 +97,8 @@ public class UserCouponModel extends BaseEntity {
 
         return discountAmount;
     }
+
+    public void restore() {
+        this.usedAt = null;
+    }
 }
