@@ -228,12 +228,13 @@ flowchart TD
 
 **목표:** 시스템 경계를 넘는 이벤트를 Kafka로 발행한다.
 
-- [ ] **Producer 설정** — `acks=all`, `enable.idempotence=true`
-- [ ] **토픽 설계** — `catalog-events`(좋아요·조회, key=productId), `order-events`(주문·판매, key=orderId), `coupon-issue-requests`(쿠폰 발급 요청, key=couponId)
-- [ ] **PartitionKey = 집계 대상 id** — 같은 키 = 같은 파티션으로 순서 보장
-- [ ] Step 1 이벤트 중 **시스템 경계를 넘는 것만** Kafka로 승격 (애플리케이션 내부 후속은 in-app 유지)
+- [x] **Producer 설정** — `kafka.yml`에 `acks=all` + `enable.idempotence=true` (retries=3 기존 유지). commerce-api에 `modules:kafka` 연결
+- [x] **토픽 설계** — `KafkaTopicConfig`의 `NewTopic` 빈: `catalog-events`(partitions=3, key=productId) · `order-events`(partitions=3, key=orderId) · `coupon-issue-requests`(**partitions=1**, key=couponId — 선착순 해석 용이성을 위해 정직하게 단일 파티션)
+- [x] **PartitionKey = 집계 대상 id** — `KafkaMessagePublisher.publish(topic, key, payload)`가 String key로 발행, `send().get()` 동기 확인(성공해야 반환) — Stage 6 relay의 "발행 확인 후 마킹" 전제
+- [x] Kafka Testcontainers fixture 신설(`modules/kafka` testFixtures, MySQL fixture 패턴) — `spring.kafka.bootstrap-servers` 시스템 프로퍼티 주입. local 프로파일 admin bootstrap을 `localhost:19092`로 교정(호스트 실행 앱이 토픽 생성 가능하게)
+- [x] 이벤트 승격 경계 확정 — Kafka로 넘는 것: 좋아요/조회(catalog) · 주문/결제(order) · 쿠폰 발급 요청(coupon). **실제 발행 배선은 Stage 6 Outbox 경유로 일원화**(직접 발행 경로를 만들었다 지우는 이중 작업 회피). in-app 후속(like_count·복원·로깅)은 그대로 유지
 
-**검증:** 같은 productId 이벤트가 항상 같은 파티션으로 가고, Producer 설정이 발행 유실·중복을 최소화함을 확인.
+**검증:** 같은 key 메시지가 항상 같은 파티션으로 가고, Producer에 acks=all·멱등이 설정됨을 실 브로커(Testcontainers)로 확인. ✅ `KafkaMessagePublisherIntegrationTest`
 
 ---
 
