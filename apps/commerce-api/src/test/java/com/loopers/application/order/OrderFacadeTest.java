@@ -23,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -33,6 +34,7 @@ import com.loopers.domain.coupon.CouponModel;
 import com.loopers.domain.coupon.DiscountType;
 import com.loopers.domain.coupon.UserCouponModel;
 import com.loopers.domain.coupon.UserCouponRepository;
+import com.loopers.domain.order.OrderCreatedEvent;
 import com.loopers.domain.order.OrderItemModel;
 import com.loopers.domain.order.OrderModel;
 import com.loopers.domain.order.OrderRepository;
@@ -61,8 +63,16 @@ class OrderFacadeTest {
     @Mock
     private UserCouponRepository userCouponRepository;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private OrderFacade orderFacade;
+
+    private OrderModel withId(OrderModel order, Long orderId) {
+        ReflectionTestUtils.setField(order, "id", orderId);
+        return order;
+    }
 
     private ProductModel product(int price) {
         return product(price, 50);
@@ -112,16 +122,19 @@ class OrderFacadeTest {
         private final Long userId = 1L;
         private final Long productId = 10L;
 
-        @DisplayName("재고가 충분하면 재고를 차감하고 스냅샷을 기록한 주문 정보를 반환한다.")
+        @DisplayName("재고가 충분하면 재고를 차감하고 스냅샷을 기록한 주문 정보를 반환하고 주문 생성 이벤트를 발행한다.")
         @Test
-        void returnsOrderInfo_whenStockIsSufficient() {
+        void returnsOrderInfo_andPublishesOrderCreatedEvent_whenStockIsSufficient() {
             // arrange
             ProductModel product = product(39_000);
             List<OrderItemCommand> itemCommands = List.of(new OrderItemCommand(productId, 2));
-            given(userRepository.getActiveById(userId)).willReturn(mock(UserModel.class));
+            UserModel user = mock(UserModel.class);
+            given(user.getId()).willReturn(userId);
+            given(userRepository.getActiveById(userId)).willReturn(user);
             given(productRepository.getActiveByIdForUpdate(productId)).willReturn(product);
             given(brandRepository.getActiveById(product.getBrandId())).willReturn(brand());
-            given(orderRepository.save(any(OrderModel.class), anyList())).willAnswer(invocation -> invocation.getArgument(0));
+            given(orderRepository.save(any(OrderModel.class), anyList()))
+                .willAnswer(invocation -> withId(invocation.getArgument(0), 100L));
 
             // act
             OrderInfo orderInfo = orderFacade.createOrder(userId, itemCommands, null, ZonedDateTime.now());
@@ -138,7 +151,8 @@ class OrderFacadeTest {
                 () -> assertThat(orderInfo.finalAmount()).isEqualTo(78_000),
                 () -> assertThat(orderInfo.userCouponId()).isNull(),
                 () -> assertThat(product.getStock().value()).isEqualTo(48),
-                () -> then(orderRepository).should().save(any(OrderModel.class), anyList())
+                () -> then(orderRepository).should().save(any(OrderModel.class), anyList()),
+                () -> then(eventPublisher).should().publishEvent(OrderCreatedEvent.of(100L, userId, 78_000))
             );
         }
 
@@ -232,11 +246,14 @@ class OrderFacadeTest {
             ProductModel secondProduct = product(5_000);
             List<OrderItemCommand> itemCommands =
                 List.of(new OrderItemCommand(firstProductId, 1), new OrderItemCommand(secondProductId, 2));
-            given(userRepository.getActiveById(userId)).willReturn(mock(UserModel.class));
+            UserModel user = mock(UserModel.class);
+            given(user.getId()).willReturn(userId);
+            given(userRepository.getActiveById(userId)).willReturn(user);
             given(productRepository.getActiveByIdForUpdate(firstProductId)).willReturn(firstProduct);
             given(productRepository.getActiveByIdForUpdate(secondProductId)).willReturn(secondProduct);
             given(brandRepository.getActiveById(firstProduct.getBrandId())).willReturn(brand());
-            given(orderRepository.save(any(OrderModel.class), anyList())).willAnswer(invocation -> invocation.getArgument(0));
+            given(orderRepository.save(any(OrderModel.class), anyList()))
+                .willAnswer(invocation -> withId(invocation.getArgument(0), 100L));
 
             // act
             OrderInfo orderInfo = orderFacade.createOrder(userId, itemCommands, null, ZonedDateTime.now());
@@ -364,7 +381,8 @@ class OrderFacadeTest {
             UserCouponModel userCoupon = userCoupon(DiscountType.FIXED, 5_000, 10_000);
             List<OrderItemCommand> itemCommands = List.of(new OrderItemCommand(productId, 2));
             given(userCouponRepository.getActiveByIdAndUserId(userCouponId, userId)).willReturn(userCoupon);
-            given(orderRepository.save(any(OrderModel.class), anyList())).willAnswer(invocation -> invocation.getArgument(0));
+            given(orderRepository.save(any(OrderModel.class), anyList()))
+                .willAnswer(invocation -> withId(invocation.getArgument(0), 100L));
 
             // act
             OrderInfo orderInfo = orderFacade.createOrder(userId, itemCommands, userCouponId, now);

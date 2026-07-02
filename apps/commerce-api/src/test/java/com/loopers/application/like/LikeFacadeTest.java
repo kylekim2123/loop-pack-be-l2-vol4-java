@@ -80,7 +80,7 @@ class LikeFacadeTest {
             // assert
             assertAll(
                 () -> then(likeRepository).should().save(any(LikeModel.class)),
-                () -> then(eventPublisher).should().publishEvent(LikeCreatedEvent.from(productId))
+                () -> then(eventPublisher).should().publishEvent(LikeCreatedEvent.of(userId, productId))
             );
         }
 
@@ -151,7 +151,7 @@ class LikeFacadeTest {
             // assert
             assertAll(
                 () -> then(likeRepository).should().deleteByUserIdAndProductId(userId, productId),
-                () -> then(eventPublisher).should().publishEvent(LikeDeletedEvent.from(productId))
+                () -> then(eventPublisher).should().publishEvent(LikeDeletedEvent.of(userId, productId))
             );
         }
 

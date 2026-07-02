@@ -23,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 
@@ -30,6 +31,7 @@ import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductSortType;
+import com.loopers.domain.product.ProductViewedEvent;
 import com.loopers.domain.product.projection.ProductAdminView;
 import com.loopers.domain.product.projection.ProductDetail;
 import com.loopers.domain.product.projection.ProductSummary;
@@ -48,6 +50,9 @@ class ProductFacadeTest {
 
     @Mock
     private RedisCacheStore redisCacheStore;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ProductFacade productFacade;
@@ -298,9 +303,9 @@ class ProductFacadeTest {
     class ReadProduct {
 
         @SuppressWarnings("unchecked")
-        @DisplayName("활성 상품이면 상세 정보를 변환해 반환한다.")
+        @DisplayName("활성 상품이면 상세 정보를 변환해 반환하고 상품 조회 이벤트를 발행한다.")
         @Test
-        void returnsDetailInfo_whenProductIsActive() {
+        void returnsDetailInfo_andPublishesProductViewedEvent_whenProductIsActive() {
             // arrange
             ProductDetail detail = new ProductDetail(1L, "감성 가디건", "포근한 가디건", 1L, "감성 브랜드", 39_000, 5, 2);
             given(productRepository.getActiveDetailById(1L)).willReturn(detail);
@@ -314,7 +319,8 @@ class ProductFacadeTest {
             assertAll(
                 () -> assertThat(result.productId()).isEqualTo(1L),
                 () -> assertThat(result.isAvailable()).isTrue(),
-                () -> assertThat(result.likeCount()).isEqualTo(2)
+                () -> assertThat(result.likeCount()).isEqualTo(2),
+                () -> then(eventPublisher).should().publishEvent(ProductViewedEvent.from(1L))
             );
         }
 
@@ -329,10 +335,13 @@ class ProductFacadeTest {
                 .willAnswer(invocation -> ((Supplier<ProductDetailInfo>) invocation.getArgument(3)).get());
 
             // act & assert
-            assertThatThrownBy(() -> productFacade.readProduct(1L))
-                .isInstanceOf(CoreException.class)
-                .extracting("errorType")
-                .isEqualTo(ErrorType.NOT_FOUND);
+            assertAll(
+                () -> assertThatThrownBy(() -> productFacade.readProduct(1L))
+                    .isInstanceOf(CoreException.class)
+                    .extracting("errorType")
+                    .isEqualTo(ErrorType.NOT_FOUND),
+                () -> then(eventPublisher).should(never()).publishEvent(any(ProductViewedEvent.class))
+            );
         }
 
         @SuppressWarnings("unchecked")
