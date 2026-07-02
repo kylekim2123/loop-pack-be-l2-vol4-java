@@ -109,4 +109,22 @@ class StockTest {
                 .isEqualTo(ErrorType.CONFLICT);
         }
     }
+
+    @DisplayName("재고를 복원할 때,")
+    @Nested
+    class Increase {
+
+        @DisplayName("복원 수량만큼 늘어난 Stock이 반환된다.")
+        @Test
+        void returnsIncreasedStock_whenQuantityIsGiven() {
+            // arrange
+            Stock stock = Stock.from(6);
+
+            // act
+            Stock increased = stock.increase(4);
+
+            // assert
+            assertThat(increased.value()).isEqualTo(10);
+        }
+    }
 }

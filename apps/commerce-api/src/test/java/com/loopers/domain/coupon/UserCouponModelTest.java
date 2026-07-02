@@ -262,4 +262,25 @@ class UserCouponModelTest {
             assertThat(userCoupon.apply(10_001, NOW)).isEqualTo(1_000);
         }
     }
+
+    @DisplayName("발급 쿠폰을 복원할 때,")
+    @Nested
+    class Restore {
+
+        @DisplayName("사용 시각이 지워져 다시 사용 가능해진다.")
+        @Test
+        void clearsUsedAt_andBecomesAvailable() {
+            // arrange
+            UserCouponModel userCoupon = usedCoupon(NOW.plusDays(7), NOW);
+
+            // act
+            userCoupon.restore();
+
+            // assert
+            assertAll(
+                () -> assertThat(userCoupon.getUsedAt()).isNull(),
+                () -> assertThat(userCoupon.getStatus(NOW)).isEqualTo(UserCouponStatus.AVAILABLE)
+            );
+        }
+    }
 }
