@@ -21,6 +21,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import com.loopers.domain.coupon.CouponIssueRequestModel;
 import com.loopers.domain.coupon.CouponIssueRequestStatus;
 import com.loopers.domain.coupon.CouponModel;
 import com.loopers.domain.coupon.DiscountType;
@@ -234,6 +235,146 @@ class CouponV1ApiE2ETest {
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT),
                 () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.FAIL),
                 () -> assertThat(response.getBody().meta().errorCode()).isEqualTo(ErrorType.CONFLICT.getCode())
+            );
+        }
+    }
+
+    @DisplayName("쿠폰 발급 결과 조회 - GET /api/v1/coupons/issue/{requestId}")
+    @Nested
+    class ReadCouponIssueRequest {
+
+        private String issueRequestEndpoint(Long requestId) {
+            return "/api/v1/coupons/issue/" + requestId;
+        }
+
+        private Long acceptIssueRequest(Long couponId) {
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
+                issueEndpoint(couponId),
+                HttpMethod.POST,
+                memberPost("kylekim"),
+                MAP_RESPONSE
+            );
+
+            return Long.valueOf(String.valueOf(response.getBody().data().get("requestId")));
+        }
+
+        @DisplayName("접수 직후 조회하면, 200 OK와 함께 PENDING 상태가 반환된다.")
+        @Test
+        void returnsPending_rightAfterAccepted() {
+            // arrange
+            saveUser("kylekim");
+            CouponModel coupon = saveCoupon();
+            Long requestId = acceptIssueRequest(coupon.getId());
+
+            // act
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
+                issueRequestEndpoint(requestId),
+                HttpMethod.GET,
+                memberPost("kylekim"),
+                MAP_RESPONSE
+            );
+
+            // assert
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
+                () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS),
+                () -> assertThat(response.getBody().data().get("status")).isEqualTo(CouponIssueRequestStatus.PENDING.name())
+            );
+        }
+
+        @DisplayName("비동기 처리가 실패로 끝났으면, FAILED 상태와 실패 사유가 반환된다.")
+        @Test
+        void returnsFailedWithReason_whenProcessingFailed() {
+            // arrange
+            saveUser("kylekim");
+            CouponModel coupon = saveCoupon();
+            Long requestId = acceptIssueRequest(coupon.getId());
+            CouponIssueRequestModel issueRequest = couponIssueRequestJpaRepository.findById(requestId).orElseThrow();
+            issueRequest.markFailed("쿠폰 수량이 모두 소진되었습니다.");
+            couponIssueRequestJpaRepository.saveAndFlush(issueRequest);
+
+            // act
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
+                issueRequestEndpoint(requestId),
+                HttpMethod.GET,
+                memberPost("kylekim"),
+                MAP_RESPONSE
+            );
+
+            // assert
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
+                () -> assertThat(response.getBody().data().get("status")).isEqualTo(CouponIssueRequestStatus.FAILED.name()),
+                () -> assertThat(response.getBody().data().get("reason")).isNotNull()
+            );
+        }
+
+        @DisplayName("비동기 처리가 성공으로 끝났으면, SUCCESS 상태가 반환된다.")
+        @Test
+        void returnsSuccess_whenProcessingSucceeded() {
+            // arrange
+            saveUser("kylekim");
+            CouponModel coupon = saveCoupon();
+            Long requestId = acceptIssueRequest(coupon.getId());
+            CouponIssueRequestModel issueRequest = couponIssueRequestJpaRepository.findById(requestId).orElseThrow();
+            issueRequest.markSuccess();
+            couponIssueRequestJpaRepository.saveAndFlush(issueRequest);
+
+            // act
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
+                issueRequestEndpoint(requestId),
+                HttpMethod.GET,
+                memberPost("kylekim"),
+                MAP_RESPONSE
+            );
+
+            // assert
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
+                () -> assertThat(response.getBody().data().get("status")).isEqualTo(CouponIssueRequestStatus.SUCCESS.name())
+            );
+        }
+
+        @DisplayName("타인의 발급 요청을 조회하면, 404 Not Found로 거절된다.")
+        @Test
+        void returnsNotFound_whenRequestIsNotOwned() {
+            // arrange
+            saveUser("kylekim");
+            saveUser("otheruser");
+            CouponModel coupon = saveCoupon();
+            Long requestId = acceptIssueRequest(coupon.getId());
+
+            // act
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
+                issueRequestEndpoint(requestId),
+                HttpMethod.GET,
+                memberPost("otheruser"),
+                MAP_RESPONSE
+            );
+
+            // assert
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND),
+                () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.FAIL),
+                () -> assertThat(response.getBody().meta().errorCode()).isEqualTo(ErrorType.NOT_FOUND.getCode())
+            );
+        }
+
+        @DisplayName("인증 헤더가 없으면, 401 Unauthorized로 거절된다.")
+        @Test
+        void returnsUnauthorized_whenAuthHeaderIsMissing() {
+            // act
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
+                issueRequestEndpoint(1L),
+                HttpMethod.GET,
+                guestPost(),
+                MAP_RESPONSE
+            );
+
+            // assert
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED),
+                () -> assertThat(response.getBody().meta().errorCode()).isEqualTo(ErrorType.UNAUTHENTICATED.getCode())
             );
         }
     }
