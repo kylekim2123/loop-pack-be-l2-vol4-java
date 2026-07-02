@@ -274,10 +274,11 @@ flowchart TD
 
 **목표:** in-memory 이벤트 유실로 어긋난 카운터를 원천 기준으로 되맞춘다.
 
-- [ ] **`LikeCountReconciliation` 잡** — `products.like_count`를 `SELECT COUNT(*) FROM likes ...`(진실의 원천)로 재계산해 보정
-- [ ] **`product_metrics` 보정** — 원천 대비 drift를 주기 재계산으로 리셋 (안전망)
-- [ ] 주기(예: 야간 cron)로 실행. 두 카운터를 서로 동기화하지 않고 각자 원천에 수렴
-- [ ] 통합 테스트 — 이벤트를 의도적으로 누락시킨 뒤 잡 실행 → 원천과 일치 복구 확인
+- [x] **`likeCountReconcileJob`** — `products.like_count`를 `likes` COUNT(진실의 원천) 기준 `UPDATE JOIN` 한 방으로 보정 (`ProductLikeCountReconcileTasklet`)
+- [x] **`product_metrics` 보정** — 같은 원천으로 별도 스텝(`ProductMetricsLikeCountReconcileTasklet`)이 like_count drift 리셋. 두 카운터는 서로 참조하지 않고 각자 원천에 수렴
+- [x] 실행 방식 — `spring.batch.job.name=likeCountReconcileJob`으로 기동(외부 cron이 주기 실행하는 전제, 앱 내 스케줄러 없음)
+- [x] 통합 테스트 — 파생 카운터를 의도적으로 어긋나게 한 뒤 잡 실행 → 원천 COUNT와 일치 복구. 이미 수렴 상태면 무변화. ✅ `LikeCountReconcileJobE2ETest`
+- [x] 부수 수정 — `CommerceBatchApplicationTest`가 잡 이름 NONE으로 컨텍스트 로드에 실패하던 기존 템플릿 문제를 `spring.batch.job.enabled=false`로 교정
 
 **검증:** `like_count`를 인위적으로 어긋나게 한 뒤 잡을 돌리면 `likes` COUNT와 일치하게 self-heal 된다.
 
