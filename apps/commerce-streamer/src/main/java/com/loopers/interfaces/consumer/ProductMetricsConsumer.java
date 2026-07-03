@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.metrics.ConsumedEvent;
+import com.loopers.application.event.ConsumedEvent;
 import com.loopers.application.metrics.ProductMetricsAggregator;
 import com.loopers.confg.kafka.KafkaConfig;
 
