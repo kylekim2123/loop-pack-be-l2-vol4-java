@@ -3,19 +3,23 @@ package com.loopers.interfaces.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -23,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.loopers.config.redis.RedisConfig;
 import com.loopers.domain.brand.BrandModel;
 import com.loopers.domain.coupon.CouponModel;
 import com.loopers.domain.coupon.DiscountType;
@@ -42,6 +47,7 @@ import com.loopers.infrastructure.user.UserJpaRepository;
 import com.loopers.interfaces.api.order.OrderV1Dto;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
+import com.loopers.utils.RedisCleanUp;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class OrderV1ApiE2ETest {
@@ -49,6 +55,7 @@ class OrderV1ApiE2ETest {
     private static final String ENDPOINT = "/api/v1/orders";
     private static final String LOGIN_ID_HEADER = "X-Loopers-LoginId";
     private static final String LOGIN_PW_HEADER = "X-Loopers-LoginPw";
+    private static final String ENTRY_TOKEN_HEADER = "X-Entry-Token";
     private static final String RAW_PASSWORD = "Kyle!2030";
     private static final ParameterizedTypeReference<ApiResponse<Map<String, Object>>> MAP_RESPONSE = new ParameterizedTypeReference<>() {};
 
@@ -82,9 +89,17 @@ class OrderV1ApiE2ETest {
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
+    @Autowired
+    private RedisCleanUp redisCleanUp;
+
+    @Autowired
+    @Qualifier(RedisConfig.REDIS_TEMPLATE_MASTER)
+    private RedisTemplate<String, String> masterRedisTemplate;
+
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
+        redisCleanUp.truncateAll();
     }
 
     private UserModel saveUser(String loginId) {
@@ -142,8 +157,17 @@ class OrderV1ApiE2ETest {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.add(LOGIN_ID_HEADER, loginId);
         headers.add(LOGIN_PW_HEADER, RAW_PASSWORD);
+        headers.add(ENTRY_TOKEN_HEADER, issueEntryToken(loginId));
 
         return new HttpEntity<>(body, headers);
+    }
+
+    private String issueEntryToken(String loginId) {
+        Long userId = userJpaRepository.findByLoginIdValueAndDeletedAtIsNull(loginId).orElseThrow().getId();
+        String token = UUID.randomUUID().toString();
+        masterRedisTemplate.opsForValue().set("entry-token:" + userId, token, Duration.ofMinutes(5));
+
+        return token;
     }
 
     private HttpEntity<Void> memberGet(String loginId) {
