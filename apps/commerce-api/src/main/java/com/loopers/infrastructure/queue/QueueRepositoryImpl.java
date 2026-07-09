@@ -2,6 +2,7 @@ package com.loopers.infrastructure.queue;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -23,6 +24,16 @@ public class QueueRepositoryImpl implements QueueRepository {
         "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]) "
             + "redis.call('ZREM', KEYS[2], ARGV[3]) "
             + "return 1",
+        Long.class
+    );
+    private static final RedisScript<Long> CONSUME_ENTRY_TOKEN_SCRIPT = RedisScript.of(
+        "local stored = redis.call('GET', KEYS[1]) "
+            + "if stored == ARGV[1] then "
+            + "  local ttl = redis.call('TTL', KEYS[1]) "
+            + "  redis.call('DEL', KEYS[1]) "
+            + "  return ttl "
+            + "end "
+            + "return -1",
         Long.class
     );
 
@@ -81,6 +92,26 @@ public class QueueRepositoryImpl implements QueueRepository {
             String.valueOf(ttl.getSeconds()),
             String.valueOf(userId)
         );
+    }
+
+    @Override
+    public Optional<Duration> consumeEntryToken(Long userId, String token) {
+        Long remainingTtlSeconds = masterRedisTemplate.execute(
+            CONSUME_ENTRY_TOKEN_SCRIPT,
+            List.of(entryTokenKey(userId)),
+            token
+        );
+
+        if (remainingTtlSeconds == null || remainingTtlSeconds < 0) {
+            return Optional.empty();
+        }
+
+        return Optional.of(Duration.ofSeconds(remainingTtlSeconds));
+    }
+
+    @Override
+    public void restoreEntryToken(Long userId, String token, Duration ttl) {
+        masterRedisTemplate.opsForValue().set(entryTokenKey(userId), token, ttl);
     }
 
     private String entryTokenKey(Long userId) {

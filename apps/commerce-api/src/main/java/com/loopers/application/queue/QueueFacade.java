@@ -1,6 +1,8 @@
 package com.loopers.application.queue;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -37,5 +39,13 @@ public class QueueFacade {
         String token = UUID.randomUUID().toString();
 
         queueRepository.issueEntryToken(userId, token, queueProperties.tokenTtl());
+    }
+
+    public Optional<Duration> consumeEntryToken(Long userId, String token) {
+        return queueRepository.consumeEntryToken(userId, token);
+    }
+
+    public void restoreEntryToken(Long userId, String token, Duration ttl) {
+        queueRepository.restoreEntryToken(userId, token, ttl);
     }
 }
