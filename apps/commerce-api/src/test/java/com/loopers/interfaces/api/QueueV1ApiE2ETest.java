@@ -118,7 +118,7 @@ class QueueV1ApiE2ETest {
     @Nested
     class Enter {
 
-        @DisplayName("처음 진입하면, 201 Created와 함께 순번 1과 전체 대기 인원 1이 반환된다.")
+        @DisplayName("처음 진입하면, 201 Created와 함께 순번 1·전체 대기 인원 1·예상 대기 시간이 반환된다.")
         @Test
         void returnsFirstPosition_whenEntersFirst() {
             // arrange
@@ -131,7 +131,7 @@ class QueueV1ApiE2ETest {
             assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED),
                 () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS),
-                () -> assertThat(response.getBody().data()).containsOnlyKeys("position", "totalWaiting"),
+                () -> assertThat(response.getBody().data()).containsOnlyKeys("position", "totalWaiting", "estimatedWaitSeconds"),
                 () -> assertThat(positionOf(response)).isEqualTo(1),
                 () -> assertThat(totalWaitingOf(response)).isEqualTo(1)
             );

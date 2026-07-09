@@ -306,9 +306,10 @@ class QueueVerificationE2ETest {
         @DisplayName("한 주기엔 앞에서 배치 크기만큼만 발급되고, 초과분은 대기열에 남아 다음 주기에 순서대로 발급된다.")
         @Test
         void drainsAtBatchRate_whenWaitingExceedsBatchSize() {
-            // arrange (배치 크기의 2배 + 7명이 대기)
+            // arrange (배치 2번 + 마지막 자투리(배치 미만)로 정확히 3주기에 소진되는 인원)
             int batchSize = queueProperties.batchSize();
-            int waitingCount = batchSize * 2 + 7;
+            int lastBatchRemainder = batchSize - 1;
+            int waitingCount = batchSize * 2 + lastBatchRemainder;
             LongStream.rangeClosed(1, waitingCount).forEach(userId -> seedWaiting(userId, userId));
 
             // act & assert (주기마다 배치 크기만큼만 줄어드는지 단계별 확인)

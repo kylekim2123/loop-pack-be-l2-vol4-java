@@ -1,6 +1,7 @@
 package com.loopers.application.queue;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -19,6 +20,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.loopers.domain.queue.QueueRepository;
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
 
 @ExtendWith(MockitoExtension.class)
 class QueueFacadeTest {
@@ -58,7 +61,7 @@ class QueueFacadeTest {
                 () -> assertThat(positionInfo.entryToken()).isEqualTo("entry-token-value"),
                 () -> assertThat(positionInfo.totalWaiting()).isNull(),
                 () -> assertThat(positionInfo.estimatedWaitSeconds()).isNull(),
-                () -> then(queueRepository).should(never()).getRank(anyLong())
+                () -> then(queueRepository).should(never()).findRank(anyLong())
             );
         }
 
@@ -67,7 +70,7 @@ class QueueFacadeTest {
         void returnsWaitingInfoWithEstimatedWaitSeconds_whenStillWaiting() {
             // arrange
             given(queueRepository.findEntryToken(userId)).willReturn(Optional.empty());
-            given(queueRepository.getRank(userId)).willReturn(511L);
+            given(queueRepository.findRank(userId)).willReturn(Optional.of(511L));
             given(queueRepository.count()).willReturn(1_200L);
 
             // act
@@ -87,7 +90,7 @@ class QueueFacadeTest {
         void returnsAtLeastOneSecond_whenPositionIsSmallerThanIssuesPerSecond() {
             // arrange
             given(queueRepository.findEntryToken(userId)).willReturn(Optional.empty());
-            given(queueRepository.getRank(userId)).willReturn(0L);
+            given(queueRepository.findRank(userId)).willReturn(Optional.of(0L));
             given(queueRepository.count()).willReturn(1L);
 
             // act
@@ -95,6 +98,62 @@ class QueueFacadeTest {
 
             // assert
             assertThat(positionInfo.estimatedWaitSeconds()).isEqualTo(1L);
+        }
+
+        @DisplayName("입장권 확인과 순번 조회 사이에 스케줄러가 발급을 끝내 줄에서 빠졌어도, 재확인한 입장권으로 응답한다.")
+        @Test
+        void returnsIssuedInfo_whenTokenIssuedBetweenTokenCheckAndRankRead() {
+            // arrange (첫 확인 땐 입장권이 없다가, 순번 조회 실패 후 재확인 땐 발급돼 있음)
+            given(queueRepository.findEntryToken(userId)).willReturn(Optional.empty(), Optional.of("entry-token-value"));
+            given(queueRepository.findRank(userId)).willReturn(Optional.empty());
+
+            // act
+            QueuePositionInfo positionInfo = queueFacade.readPosition(userId);
+
+            // assert
+            assertAll(
+                () -> assertThat(positionInfo.position()).isZero(),
+                () -> assertThat(positionInfo.entryToken()).isEqualTo("entry-token-value")
+            );
+        }
+
+        @DisplayName("대기열에도 없고 재확인한 입장권도 없으면 NOT_FOUND 예외가 발생한다.")
+        @Test
+        void throwsNotFound_whenNeitherWaitingNorIssued() {
+            // arrange
+            given(queueRepository.findEntryToken(userId)).willReturn(Optional.empty());
+            given(queueRepository.findRank(userId)).willReturn(Optional.empty());
+
+            // act
+            CoreException exception = catchThrowableOfType(CoreException.class, () -> queueFacade.readPosition(userId));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
+        }
+    }
+
+    @DisplayName("대기열에 진입할 때,")
+    @Nested
+    class Enter {
+
+        private final Long userId = 1L;
+
+        @DisplayName("줄에 세운 직후 스케줄러가 발급을 끝내 줄에서 빠졌어도, 입장권으로 응답한다.")
+        @Test
+        void returnsIssuedInfo_whenSchedulerIssuesRightAfterEnter() {
+            // arrange
+            given(queueRepository.findRank(userId)).willReturn(Optional.empty());
+            given(queueRepository.findEntryToken(userId)).willReturn(Optional.of("entry-token-value"));
+
+            // act
+            QueuePositionInfo positionInfo = queueFacade.enter(userId);
+
+            // assert
+            assertAll(
+                () -> then(queueRepository).should().add(userId),
+                () -> assertThat(positionInfo.position()).isZero(),
+                () -> assertThat(positionInfo.entryToken()).isEqualTo("entry-token-value")
+            );
         }
     }
 }
