@@ -5,5 +5,5 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(value = "queue")
-public record QueueProperties(int batchSize, Duration tokenTtl) {
+public record QueueProperties(int batchSize, Duration tokenTtl, Duration issueInterval) {
 }

@@ -13,11 +13,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class EntryTokenScheduler {
 
-    private static final long FIXED_DELAY_MILLIS = 100L;
-
     private final QueueFacade queueFacade;
 
-    @Scheduled(fixedDelay = FIXED_DELAY_MILLIS)
+    @Scheduled(fixedDelayString = "${queue.issue-interval}")
     public void issueEntryTokens() {
         List<Long> userIds = queueFacade.findIssuableUserIds();
 
