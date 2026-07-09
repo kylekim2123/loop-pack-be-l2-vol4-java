@@ -8,7 +8,7 @@ public interface QueueRepository {
 
     void add(Long userId);
 
-    long getRank(Long userId);
+    Optional<Long> findRank(Long userId);
 
     long count();
 

@@ -12,8 +12,6 @@ import org.springframework.stereotype.Component;
 
 import com.loopers.config.redis.RedisConfig;
 import com.loopers.domain.queue.QueueRepository;
-import com.loopers.support.error.CoreException;
-import com.loopers.support.error.ErrorType;
 
 @Component
 public class QueueRepositoryImpl implements QueueRepository {
@@ -49,14 +47,8 @@ public class QueueRepositoryImpl implements QueueRepository {
     }
 
     @Override
-    public long getRank(Long userId) {
-        Long rank = masterRedisTemplate.opsForZSet().rank(WAITING_QUEUE_KEY, String.valueOf(userId));
-
-        if (rank == null) {
-            throw new CoreException(ErrorType.NOT_FOUND, "대기열에 진입하지 않았습니다.");
-        }
-
-        return rank;
+    public Optional<Long> findRank(Long userId) {
+        return Optional.ofNullable(masterRedisTemplate.opsForZSet().rank(WAITING_QUEUE_KEY, String.valueOf(userId)));
     }
 
     @Override

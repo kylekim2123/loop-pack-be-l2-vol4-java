@@ -8,6 +8,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import com.loopers.domain.queue.QueueRepository;
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,7 +35,14 @@ public class QueueFacade {
     }
 
     private QueuePositionInfo readWaitingPosition(Long userId) {
-        long position = queueRepository.getRank(userId) + 1;
+        Optional<Long> rank = queueRepository.findRank(userId);
+        if (rank.isEmpty()) {
+            return queueRepository.findEntryToken(userId)
+                .map(QueuePositionInfo::issued)
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "대기열에 진입하지 않았습니다."));
+        }
+
+        long position = rank.get() + 1;
         long totalWaiting = queueRepository.count();
 
         return QueuePositionInfo.waiting(position, totalWaiting, estimateWaitSeconds(position));
