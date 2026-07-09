@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
@@ -56,6 +57,29 @@ class QueueRepositoryIntegrationTest {
 
         // assert
         assertThat(front).containsExactly(200L, 300L);
+    }
+
+    @DisplayName("findEntryToken은 발급된 입장권이 있으면 그 값을 반환한다.")
+    @Test
+    void returnsEntryToken_whenTokenExists() {
+        // arrange
+        masterRedisTemplate.opsForValue().set("entry-token:100", "tok-abc", Duration.ofMinutes(5));
+
+        // act
+        Optional<String> entryToken = queueRepository.findEntryToken(100L);
+
+        // assert
+        assertThat(entryToken).contains("tok-abc");
+    }
+
+    @DisplayName("findEntryToken은 발급된 입장권이 없으면 빈 값을 반환한다.")
+    @Test
+    void returnsEmpty_whenTokenAbsent() {
+        // act
+        Optional<String> entryToken = queueRepository.findEntryToken(100L);
+
+        // assert
+        assertThat(entryToken).isEmpty();
     }
 
     @DisplayName("issueEntryToken은 입장권을 TTL과 함께 저장하고, 같은 원자 실행으로 대기열에서 제거한다.")

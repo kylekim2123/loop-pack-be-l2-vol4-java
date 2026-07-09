@@ -3,6 +3,7 @@ package com.loopers.interfaces.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Map;
 
@@ -11,15 +12,18 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import com.loopers.config.redis.RedisConfig;
 import com.loopers.domain.user.PasswordEncrypter;
 import com.loopers.domain.user.UserModel;
 import com.loopers.infrastructure.user.UserJpaRepository;
@@ -34,6 +38,7 @@ class QueueV1ApiE2ETest {
     private static final String POSITION_ENDPOINT = "/api/v1/queue/position";
     private static final String LOGIN_ID_HEADER = "X-Loopers-LoginId";
     private static final String LOGIN_PW_HEADER = "X-Loopers-LoginPw";
+    private static final String ENTRY_TOKEN_KEY_PREFIX = "entry-token:";
     private static final String RAW_PASSWORD = "Kyle!2030";
     private static final ParameterizedTypeReference<ApiResponse<Map<String, Object>>> MAP_RESPONSE = new ParameterizedTypeReference<>() {};
 
@@ -52,14 +57,18 @@ class QueueV1ApiE2ETest {
     @Autowired
     private RedisCleanUp redisCleanUp;
 
+    @Autowired
+    @Qualifier(RedisConfig.REDIS_TEMPLATE_MASTER)
+    private RedisTemplate<String, String> masterRedisTemplate;
+
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
         redisCleanUp.truncateAll();
     }
 
-    private void saveUser(String loginId) {
-        userJpaRepository.save(UserModel.builder()
+    private UserModel saveUser(String loginId) {
+        return userJpaRepository.save(UserModel.builder()
             .rawLoginId(loginId)
             .rawPassword(RAW_PASSWORD)
             .rawName("테스트유저")
@@ -67,6 +76,10 @@ class QueueV1ApiE2ETest {
             .rawEmail(loginId + "@example.com")
             .passwordEncrypter(passwordEncrypter)
             .build());
+    }
+
+    private void seedEntryToken(Long userId, String token) {
+        masterRedisTemplate.opsForValue().set(ENTRY_TOKEN_KEY_PREFIX + userId, token, Duration.ofMinutes(5));
     }
 
     private HttpEntity<Void> memberRequest(String loginId) {
@@ -95,6 +108,10 @@ class QueueV1ApiE2ETest {
 
     private long totalWaitingOf(ResponseEntity<ApiResponse<Map<String, Object>>> response) {
         return ((Number) response.getBody().data().get("totalWaiting")).longValue();
+    }
+
+    private long estimatedWaitSecondsOf(ResponseEntity<ApiResponse<Map<String, Object>>> response) {
+        return ((Number) response.getBody().data().get("estimatedWaitSeconds")).longValue();
     }
 
     @DisplayName("대기열 진입 - POST /api/v1/queue/enter")
@@ -179,9 +196,9 @@ class QueueV1ApiE2ETest {
     @Nested
     class ReadPosition {
 
-        @DisplayName("대기 중인 유저가 조회하면, 200 OK와 함께 현재 순번과 전체 대기 인원이 반환된다.")
+        @DisplayName("대기 중인 유저가 조회하면, 200 OK와 함께 현재 순번·전체 대기 인원·예상 대기 시간이 반환된다.")
         @Test
-        void returnsPosition_whenWaiting() {
+        void returnsPositionWithEstimatedWaitSeconds_whenWaiting() {
             // arrange
             saveUser("kylekim");
             enter("kylekim");
@@ -193,13 +210,34 @@ class QueueV1ApiE2ETest {
             assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS),
-                () -> assertThat(response.getBody().data()).containsOnlyKeys("position", "totalWaiting"),
+                () -> assertThat(response.getBody().data()).containsOnlyKeys("position", "totalWaiting", "estimatedWaitSeconds"),
                 () -> assertThat(positionOf(response)).isEqualTo(1),
-                () -> assertThat(totalWaitingOf(response)).isEqualTo(1)
+                () -> assertThat(totalWaitingOf(response)).isEqualTo(1),
+                () -> assertThat(estimatedWaitSecondsOf(response)).isEqualTo(1)
             );
         }
 
-        @DisplayName("대기열에 없는 유저가 조회하면, 404 Not Found로 거절된다.")
+        @DisplayName("입장권이 발급된 유저가 조회하면, 200 OK와 함께 순번 0과 입장권이 반환된다.")
+        @Test
+        void returnsEntryToken_whenTokenIssued() {
+            // arrange
+            UserModel user = saveUser("kylekim");
+            seedEntryToken(user.getId(), "issued-token");
+
+            // act
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = readPosition("kylekim");
+
+            // assert
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
+                () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS),
+                () -> assertThat(response.getBody().data()).containsOnlyKeys("position", "entryToken"),
+                () -> assertThat(positionOf(response)).isZero(),
+                () -> assertThat(response.getBody().data().get("entryToken")).isEqualTo("issued-token")
+            );
+        }
+
+        @DisplayName("대기열에도 없고 입장권도 없는 유저가 조회하면, 404 Not Found로 거절된다.")
         @Test
         void returnsNotFound_whenNotInQueue() {
             // arrange
