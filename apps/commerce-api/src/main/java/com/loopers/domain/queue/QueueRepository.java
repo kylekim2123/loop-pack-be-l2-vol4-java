@@ -16,6 +16,8 @@ public interface QueueRepository {
 
     void issueEntryToken(Long userId, String token, Duration ttl);
 
+    Optional<String> findEntryToken(Long userId);
+
     Optional<Duration> consumeEntryToken(Long userId, String token);
 
     void restoreEntryToken(Long userId, String token, Duration ttl);

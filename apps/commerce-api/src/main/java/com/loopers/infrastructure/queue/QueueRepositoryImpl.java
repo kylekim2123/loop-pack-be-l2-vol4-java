@@ -95,6 +95,11 @@ public class QueueRepositoryImpl implements QueueRepository {
     }
 
     @Override
+    public Optional<String> findEntryToken(Long userId) {
+        return Optional.ofNullable(masterRedisTemplate.opsForValue().get(entryTokenKey(userId)));
+    }
+
+    @Override
     public Optional<Duration> consumeEntryToken(Long userId, String token) {
         Long remainingTtlSeconds = masterRedisTemplate.execute(
             CONSUME_ENTRY_TOKEN_SCRIPT,

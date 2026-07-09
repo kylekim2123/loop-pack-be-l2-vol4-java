@@ -19,7 +19,7 @@ public interface QueueV1ApiSpec {
 
     @Operation(
         summary = "순번 조회",
-        description = "대기 중인 회원의 현재 순번과 전체 대기 인원을 반환한다. 대기열에 없으면 404를 반환한다."
+        description = "입장권이 발급된 회원에게는 순번 0과 입장권을, 대기 중인 회원에게는 현재 순번·전체 대기 인원·예상 대기 시간(초)을 반환한다. 대기열에도 없고 입장권도 없으면 404를 반환한다."
     )
     ApiResponse<QueueV1Dto.PositionResponse> readPosition(@Parameter(hidden = true) @LoginUser AuthenticatedUser loginUser);
 }

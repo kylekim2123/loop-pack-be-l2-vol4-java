@@ -15,20 +15,34 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class QueueFacade {
 
+    private static final long MILLIS_PER_SECOND = 1_000L;
+
     private final QueueRepository queueRepository;
     private final QueueProperties queueProperties;
 
     public QueuePositionInfo enter(Long userId) {
         queueRepository.add(userId);
 
-        return readPosition(userId);
+        return readWaitingPosition(userId);
     }
 
     public QueuePositionInfo readPosition(Long userId) {
-        long rank = queueRepository.getRank(userId);
+        return queueRepository.findEntryToken(userId)
+            .map(QueuePositionInfo::issued)
+            .orElseGet(() -> readWaitingPosition(userId));
+    }
+
+    private QueuePositionInfo readWaitingPosition(Long userId) {
+        long position = queueRepository.getRank(userId) + 1;
         long totalWaiting = queueRepository.count();
 
-        return QueuePositionInfo.of(rank + 1, totalWaiting);
+        return QueuePositionInfo.waiting(position, totalWaiting, estimateWaitSeconds(position));
+    }
+
+    private long estimateWaitSeconds(long position) {
+        long issuesPerSecond = queueProperties.batchSize() * MILLIS_PER_SECOND / queueProperties.issueInterval().toMillis();
+
+        return Math.ceilDiv(position, issuesPerSecond);
     }
 
     public List<Long> findIssuableUserIds() {

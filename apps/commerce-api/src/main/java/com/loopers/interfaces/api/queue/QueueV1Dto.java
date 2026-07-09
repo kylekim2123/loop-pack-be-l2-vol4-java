@@ -11,10 +11,15 @@ public class QueueV1Dto {
         }
     }
 
-    public record PositionResponse(long position, long totalWaiting) {
+    public record PositionResponse(long position, Long totalWaiting, Long estimatedWaitSeconds, String entryToken) {
 
         public static PositionResponse from(QueuePositionInfo queuePositionInfo) {
-            return new PositionResponse(queuePositionInfo.position(), queuePositionInfo.totalWaiting());
+            return new PositionResponse(
+                queuePositionInfo.position(),
+                queuePositionInfo.totalWaiting(),
+                queuePositionInfo.estimatedWaitSeconds(),
+                queuePositionInfo.entryToken()
+            );
         }
     }
 }
