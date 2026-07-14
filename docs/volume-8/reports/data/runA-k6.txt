@@ -1,0 +1,106 @@
+에
+         /\      Grafana   /‾‾/
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ‾‾\
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/
+
+     execution: local
+        script: queue-order-flow.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 300 max VUs, 5m30s max duration (incl. graceful stop):
+              * rush: 1 iterations for each of 300 VUs (maxDuration: 5m0s, gracefulStop: 30s)
+
+
+running (0m01.0s), 300/300 VUs, 0 complete and 0 interrupted iterations
+rush   [   0% ] 300 VUs  0m01.0s/5m0s  000/300 iters, 1 per VU
+
+running (0m02.0s), 298/300 VUs, 2 complete and 0 interrupted iterations
+rush   [   1% ] 300 VUs  0m02.0s/5m0s  002/300 iters, 1 per VU
+
+running (0m03.0s), 285/300 VUs, 15 complete and 0 interrupted iterations
+rush   [   5% ] 300 VUs  0m03.0s/5m0s  015/300 iters, 1 per VU
+
+running (0m04.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m04.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m05.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m05.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m06.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m06.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m07.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m07.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m08.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m08.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m09.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m09.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m10.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m10.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m11.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m11.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m12.0s), 278/300 VUs, 22 complete and 0 interrupted iterations
+rush   [   7% ] 300 VUs  0m12.0s/5m0s  022/300 iters, 1 per VU
+
+running (0m13.0s), 214/300 VUs, 86 complete and 0 interrupted iterations
+rush   [  29% ] 300 VUs  0m13.0s/5m0s  086/300 iters, 1 per VU
+
+running (0m14.0s), 178/300 VUs, 122 complete and 0 interrupted iterations
+rush   [  41% ] 300 VUs  0m14.0s/5m0s  122/300 iters, 1 per VU
+
+running (0m15.0s), 121/300 VUs, 179 complete and 0 interrupted iterations
+rush   [  60% ] 300 VUs  0m15.0s/5m0s  179/300 iters, 1 per VU
+
+
+  █ THRESHOLDS
+
+    checks
+    ✗ 'rate>0.99' rate=96.19%
+
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 578    36.376661/s
+    checks_succeeded...: 96.19% 556 out of 578
+    checks_failed......: 3.80%  22 out of 578
+
+    ✗ entered with 201
+      ↳  92% — ✓ 278 / ✗ 22
+    ✓ ordered with 201
+
+    CUSTOM
+    order_created..................: 278    17.496041/s
+    order_latency..................: avg=5.1s    min=1.87s    med=5.19s  max=7.26s  p(90)=6.28s  p(95)=6.44s
+    queue_enter_latency............: avg=4.41s   min=522.03ms med=4.23s  max=7.84s  p(90)=6.75s  p(95)=7.04s
+    queue_poll_latency.............: avg=4.63s   min=1.98s    med=4.64s  max=6.93s  p(90)=5.7s   p(95)=5.97s
+    token_wait_seconds.............: avg=4.63377 min=1.988    med=4.6445 max=6.936  p(90)=5.7043 p(95)=5.97635
+
+    HTTP
+    http_req_duration..............: avg=4.71s   min=522.03ms med=4.67s  max=7.84s  p(90)=6.31s  p(95)=6.64s
+      { expected_response:true }...: avg=4.76s   min=522.03ms med=4.73s  max=7.84s  p(90)=6.33s  p(95)=6.64s
+    http_req_failed................: 2.57%  22 out of 856
+    http_reqs......................: 856    53.872701/s
+
+    EXECUTION
+    iteration_duration.............: avg=13.49s  min=1.12s    med=14.62s max=15.88s p(90)=15.76s p(95)=15.8s
+    iterations.....................: 300    18.88062/s
+    vus............................: 121    min=121       max=300
+    vus_max........................: 300    min=300       max=300
+
+    NETWORK
+    data_received..................: 250 kB 16 kB/s
+    data_sent......................: 179 kB 11 kB/s
+
+
+
+
+running (0m15.9s), 000/300 VUs, 300 complete and 0 interrupted iterations
+rush ✓ [ 100% ] 300 VUs  0m15.9s/5m0s  300/300 iters, 1 per VU
+time="2026-07-09T17:49:53+09:00" level=error msg="thresholds on metrics 'checks' have been crossed"

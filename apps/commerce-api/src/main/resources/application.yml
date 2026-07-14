@@ -76,6 +76,11 @@ pg-simulator:
   base-url: ${PG_SIMULATOR_URL:http://localhost:8082}
   callback-url: ${PG_CALLBACK_URL:http://localhost:8080/api/v1/payments/callback}
 
+queue:
+  batch-size: 3 # 0.1초마다 발급할 입장권 수 (Stage 2 이론값 14 → Stage 7 K6 실측으로 3 확정, 근거는 reports/batch-sizing.md)
+  token-ttl: PT5M # 입장권 만료 시간 (5분)
+  issue-interval: 100ms # 입장권 발급 주기 (스케줄러 fixedDelay + 예상 대기 시간 계산의 단일 원천)
+
 ---
 spring:
   config:

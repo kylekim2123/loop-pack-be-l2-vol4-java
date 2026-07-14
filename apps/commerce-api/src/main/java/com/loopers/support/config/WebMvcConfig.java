@@ -9,6 +9,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import com.loopers.interfaces.api.auth.AdminAuthInterceptor;
 import com.loopers.interfaces.api.auth.AuthenticatedUserArgumentResolver;
+import com.loopers.interfaces.api.queue.EntryTokenInterceptor;
 
 import lombok.RequiredArgsConstructor;
 
@@ -17,10 +18,13 @@ import lombok.RequiredArgsConstructor;
 public class WebMvcConfig implements WebMvcConfigurer {
 
     private static final String ADMIN_PATH_PATTERN = "/api-admin/**";
+    private static final String ORDER_PATH_PATTERN = "/api/v1/orders";
 
     private final AuthenticatedUserArgumentResolver authenticatedUserArgumentResolver;
 
     private final AdminAuthInterceptor adminAuthInterceptor;
+
+    private final EntryTokenInterceptor entryTokenInterceptor;
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
@@ -31,5 +35,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(adminAuthInterceptor)
             .addPathPatterns(ADMIN_PATH_PATTERN);
+
+        registry.addInterceptor(entryTokenInterceptor)
+            .addPathPatterns(ORDER_PATH_PATTERN);
     }
 }
