@@ -322,12 +322,12 @@ flowchart TD
 
 > 쉽게 말하면: 이벤트를 랭킹 전용으로 한 번 더 받아서, 오늘 랭킹판의 점수를 실시간으로 올리는 단계.
 
-- [ ] **독립 Consumer Group** — 기존 토픽(catalog-events, order-events)을 `ranking` 그룹으로 구독하는 RankingConsumer 신설 (배치 리스너). DB 집계와 서로 장애 격리
-- [ ] **원자 적재 Lua** — 한 배치를 occurredAt 날짜별로 그룹핑 → 그룹마다 `dedup(SETNX ranking:handled:{eventId}, TTL 2일) + 상품별 합산 ZINCRBY + 조건부 EXPIREAT(키 날짜 + 2일 자정)`를 **단일 Lua로** 실행. dedup·배치합산·TTL을 따로 두면 그 사이에서 점수가 새므로 한 덩어리로 묶음. 다품목 이벤트는 eventId당 1회 dedup 후 모든 아이템 반영. DB event_handled는 쓰지 않음(Redis만 만지는 소비자에 DB 의존을 만들지 않기)
-- [ ] **배치 내 상품별 합산** — 한 번에 받은 메시지를 상품별 점수 변화량으로 먼저 합산(Lua 내부 table), 상품당 ZINCRBY 1회 (Redis 왕복 최소화 — 과제의 "배치 리스너로 정제" 의도)
-- [ ] **키·템플릿** — 키는 occurredAt 날짜 기준, master 템플릿으로 EVAL(쓰기). TTL은 매 쓰기 재설정이 아니라 키가 처음 생길 때만(스크립트 안에서 `TTL < 0`일 때만 EXPIREAT)
-- [ ] **Redis 실패는 로그** — 조용히 삼키지 않음. 컨슈머는 죽이지 않되 어긋남이 관측되게
-- [ ] 통합 테스트 (Testcontainers Redis, 실제 EVAL) — 종류별 점수 반영 / **같은 배치 2회 EVAL → 1회만 반영** / 좋아요 취소 → 감소 / TTL이 "키 날짜 + 2일 자정"으로 고정되는지 / 다품목 주문 dedup
+- [x] **독립 Consumer Group** — 기존 토픽(catalog-events, order-events)을 `ranking` 그룹으로 구독하는 RankingConsumer 신설 (배치 리스너). DB 집계와 서로 장애 격리
+- [x] **원자 적재 Lua** — 한 배치를 occurredAt 날짜별로 그룹핑 → 그룹마다 `dedup(SETNX ranking:handled:{eventId}, TTL 2일) + 상품별 합산 ZINCRBY + 조건부 EXPIREAT(키 날짜 + 2일 자정)`를 **단일 Lua로** 실행. dedup·배치합산·TTL을 따로 두면 그 사이에서 점수가 새므로 한 덩어리로 묶음. 다품목 이벤트는 eventId당 1회 dedup 후 모든 아이템 반영. DB event_handled는 쓰지 않음(Redis만 만지는 소비자에 DB 의존을 만들지 않기)
+- [x] **배치 내 상품별 합산** — 한 번에 받은 메시지를 상품별 점수 변화량으로 먼저 합산(Lua 내부 table), 상품당 ZINCRBY 1회 (Redis 왕복 최소화 — 과제의 "배치 리스너로 정제" 의도)
+- [x] **키·템플릿** — 키는 occurredAt 날짜 기준, master 템플릿으로 EVAL(쓰기). TTL은 매 쓰기 재설정이 아니라 키가 처음 생길 때만(스크립트 안에서 `TTL < 0`일 때만 EXPIREAT)
+- [x] **Redis 실패는 로그** — 조용히 삼키지 않음. 컨슈머는 죽이지 않되 어긋남이 관측되게
+- [x] 통합 테스트 (Testcontainers Redis, 실제 EVAL) — 종류별 점수 반영 / **같은 배치 2회 EVAL → 1회만 반영** / 좋아요 취소 → 감소 / TTL이 "키 날짜 + 2일 자정"으로 고정되는지 / 다품목 주문 dedup
 
 **이 단계 완료 기준:** 이벤트가 흐르면 몇 초 안에 오늘 랭킹판 점수가 오르고, 같은 이벤트(배치)가 다시 와도 점수는 그대로다.
 
