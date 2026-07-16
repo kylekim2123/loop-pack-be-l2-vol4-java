@@ -24,7 +24,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.application.coupon.CouponIssueProcessor;
-import com.loopers.application.event.ConsumedEvent;
+import com.loopers.application.event.CouponIssueRequestedEvent;
+import com.loopers.application.event.CouponIssueRequestedEventParser;
 import com.loopers.utils.DatabaseCleanUp;
 
 @SpringBootTest
@@ -125,9 +126,9 @@ class CouponIssueConsumerIntegrationTest {
         );
     }
 
-    private ConsumedEvent consumedEvent(Long requestId, Long userId, Long couponId) {
+    private CouponIssueRequestedEvent couponIssueRequestedEvent(Long requestId, Long userId, Long couponId) {
         try {
-            return ConsumedEvent.from(objectMapper.readTree(
+            return CouponIssueRequestedEventParser.parse(objectMapper.readTree(
                 objectMapper.writeValueAsString(issueRequestedEnvelope(UUID.randomUUID().toString(), requestId, userId, couponId))));
         } catch (Exception e) {
             throw new IllegalStateException(e);
@@ -169,7 +170,7 @@ class CouponIssueConsumerIntegrationTest {
         Long requestId = saveRequest(1L, couponId);
 
         // act
-        couponIssueProcessor.process(consumedEvent(requestId, 1L, couponId));
+        couponIssueProcessor.process(couponIssueRequestedEvent(requestId, 1L, couponId));
 
         // assert
         assertAll(
@@ -191,7 +192,7 @@ class CouponIssueConsumerIntegrationTest {
         Long requestId = saveRequest(1L, couponId);
 
         // act
-        couponIssueProcessor.process(consumedEvent(requestId, 1L, couponId));
+        couponIssueProcessor.process(couponIssueRequestedEvent(requestId, 1L, couponId));
 
         // assert
         assertAll(
@@ -207,7 +208,7 @@ class CouponIssueConsumerIntegrationTest {
         // arrange
         Long couponId = saveCoupon(100, 0);
         Long requestId = saveRequest(1L, couponId);
-        ConsumedEvent event = consumedEvent(requestId, 1L, couponId);
+        CouponIssueRequestedEvent event = couponIssueRequestedEvent(requestId, 1L, couponId);
 
         // act
         couponIssueProcessor.process(event);
@@ -239,7 +240,7 @@ class CouponIssueConsumerIntegrationTest {
                 try {
                     ready.countDown();
                     start.await();
-                    couponIssueProcessor.process(consumedEvent(requestId, userId, couponId));
+                    couponIssueProcessor.process(couponIssueRequestedEvent(requestId, userId, couponId));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }

@@ -4,7 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.loopers.application.event.ConsumedEvent;
+import com.loopers.application.event.CouponIssueRequestedEvent;
 import com.loopers.domain.event.EventHandledModel;
 import com.loopers.domain.event.EventHandledRepository;
 
@@ -45,15 +45,15 @@ public class CouponIssueProcessor {
     private final JdbcTemplate jdbcTemplate;
 
     @Transactional
-    public void process(ConsumedEvent event) {
+    public void process(CouponIssueRequestedEvent event) {
         if (eventHandledRepository.existsByEventId(event.eventId())) {
             return;
         }
         eventHandledRepository.save(EventHandledModel.from(event.eventId()));
 
-        Long requestId = event.data().path("requestId").asLong();
-        Long userId = event.data().path("userId").asLong();
-        Long couponId = event.data().path("couponId").asLong();
+        Long requestId = event.requestId();
+        Long userId = event.userId();
+        Long couponId = event.couponId();
 
         Boolean alreadyIssued = jdbcTemplate.queryForObject(EXISTS_USER_COUPON_SQL, Boolean.class, userId, couponId);
         if (Boolean.TRUE.equals(alreadyIssued)) {
