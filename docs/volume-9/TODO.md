@@ -308,11 +308,11 @@ flowchart TD
 
 > 쉽게 말하면: 주문 점수를 계산할 재료(단가)를 이벤트에 싣고, "언제든 다시 계산할 수 있는" 날짜별 장부를 마련하는 단계.
 
-- [ ] **`OrderCreatedEvent.Item`에 `price`(주문 시점 단가) 추가** — 발행부(OrderFacade 쪽)와 소비부가 같은 스키마를 보도록 함께 수정
-- [ ] **`product_metrics_daily` 테이블 신설** — `(product_id, metric_date)` 복합 유니크, `like_count`/`sales_count`/`view_count`/`sales_amount`
-- [ ] **기존 ProductMetricsAggregator 확장** — 누적 upsert와 **같은 트랜잭션에서** 일별 행도 upsert (기존 `applyDelta` 패턴을 본뜬 ON DUPLICATE KEY UPDATE). 날짜는 occurredAt 기준
-- [ ] 기존 누적 `product_metrics`와 commerce-batch 보정 배치는 **손대지 않음** (누적 테이블 구조 변경 금지)
-- [ ] 통합 테스트 — 이벤트 소비 후 누적·일별 두 테이블이 함께 갱신되는지, 날짜가 다른 이벤트는 다른 행에 쌓이는지
+- [x] **`OrderCreatedEvent.Item`에 `price`(주문 시점 단가) 추가** — 발행부(OrderFacade 쪽)와 소비부가 같은 스키마를 보도록 함께 수정
+- [x] **`product_metrics_daily` 테이블 신설** — `(product_id, metric_date)` 복합 유니크, `like_count`/`sales_count`/`view_count`/`sales_amount`
+- [x] **기존 ProductMetricsAggregator 확장** — 누적 upsert와 **같은 트랜잭션에서** 일별 행도 upsert (기존 `applyDelta` 패턴을 본뜬 ON DUPLICATE KEY UPDATE). 날짜는 occurredAt 기준
+- [x] 기존 누적 `product_metrics`와 commerce-batch 보정 배치는 **손대지 않음** (누적 테이블 구조 변경 금지)
+- [x] 통합 테스트 — 이벤트 소비 후 누적·일별 두 테이블이 함께 갱신되는지, 날짜가 다른 이벤트는 다른 행에 쌓이는지
 
 **이 단계 완료 기준:** "그날 상품별로 조회/좋아요/판매(건수·금액)가 얼마였나"를 DB가 답할 수 있다 — Redis가 날아가도 랭킹을 다시 만들 재료가 남는다.
 
