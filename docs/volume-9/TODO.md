@@ -337,12 +337,12 @@ flowchart TD
 
 > 쉽게 말하면: "오늘의 인기 상품 1위부터 20위"를 상품 정보와 함께 보여주는 단계.
 
-- [ ] **`GET /api/v1/rankings?date=yyyyMMdd&size=20&page=1`** — date 생략 시 오늘. date는 컨트롤러에서 `uuuuMMdd` 파싱(형식 오류 → BAD_REQUEST), page/size는 클라 신뢰(기존 방침)
-- [ ] **ZREVRANGE 페이징** — 해당 페이지 구간의 (productId, score)를 replica에서 조회. 순위는 `offset + 1`부터
-- [ ] **상품정보 Aggregation** — productId 목록으로 상품·브랜드를 **IN절 한 번에** 조회해 합침 (개별 조회 N+1 금지). 응답: 순위 + 상품 정보
-- [ ] **전체 개수** — ZCARD로 총 상품 수, 페이지 정보 계산
-- [ ] **빈 랭킹판** — 키가 없거나 비어 있으면 빈 목록 정상 응답 (에러 아님)
-- [ ] E2E 테스트 — ZSET 시드 후: 점수 순 정렬·순위 번호·상품정보 포함·페이지 경계·빈 판·date 파라미터
+- [x] **`GET /api/v1/rankings?date=yyyyMMdd&size=20&page=1`** — date 생략 시 오늘. date는 컨트롤러에서 `uuuuMMdd` 파싱(형식 오류 → BAD_REQUEST), page/size는 클라 신뢰(기존 방침)
+- [x] **ZREVRANGE 페이징** — 해당 페이지 구간의 (productId, score)를 replica에서 조회. 순위는 `offset + 1`부터
+- [x] **상품정보 Aggregation** — productId 목록으로 상품·브랜드를 **IN절 한 번에** 조회해 합침 (개별 조회 N+1 금지). 응답: 순위 + 상품 정보
+- [x] **전체 개수** — ZCARD로 총 상품 수, 페이지 정보 계산
+- [x] **빈 랭킹판** — 키가 없거나 비어 있으면 빈 목록 정상 응답 (에러 아님)
+- [x] E2E 테스트 — ZSET 시드 후: 점수 순 정렬·순위 번호·상품정보 포함·페이지 경계·빈 판·date 파라미터
 
 **이 단계 완료 기준:** 랭킹 페이지가 상품 ID 나열이 아니라 "1위 — ○○상품(△△브랜드, 만원)"으로 응답한다.
 
