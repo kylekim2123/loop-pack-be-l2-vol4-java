@@ -7,7 +7,7 @@ import com.loopers.support.error.ErrorType;
 
 public record OrderCreatedEvent(Long orderId, Long userId, int finalAmount, List<Item> items) {
 
-    public record Item(Long productId, int quantity) {
+    public record Item(Long productId, int quantity, int price) {
     }
 
     public OrderCreatedEvent {
