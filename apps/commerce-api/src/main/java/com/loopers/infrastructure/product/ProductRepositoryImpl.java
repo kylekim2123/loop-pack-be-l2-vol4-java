@@ -72,6 +72,11 @@ public class ProductRepositoryImpl implements ProductRepository {
     }
 
     @Override
+    public List<ProductSummary> findActiveSummariesByIds(List<Long> ids) {
+        return productJpaRepository.findActiveSummariesByIds(ids);
+    }
+
+    @Override
     public ProductDetail getActiveDetailById(Long id) {
         return productJpaRepository.findActiveDetailById(id)
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "상품이 존재하지 않습니다."));
