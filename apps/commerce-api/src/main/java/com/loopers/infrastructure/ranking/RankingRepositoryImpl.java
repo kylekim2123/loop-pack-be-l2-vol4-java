@@ -2,6 +2,7 @@ package com.loopers.infrastructure.ranking;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.data.redis.core.RedisTemplate;
@@ -38,5 +39,13 @@ public class RankingRepositoryImpl implements RankingRepository {
         Long totalCount = redisTemplate.opsForZSet().zCard(rankingKey);
 
         return totalCount == null ? 0 : totalCount;
+    }
+
+    @Override
+    public Optional<Long> findRank(LocalDate rankingDate, Long productId) {
+        String rankingKey = RankingKeyGenerator.generate(rankingDate);
+        Long zeroBasedRank = redisTemplate.opsForZSet().reverseRank(rankingKey, String.valueOf(productId));
+
+        return Optional.ofNullable(zeroBasedRank);
     }
 }

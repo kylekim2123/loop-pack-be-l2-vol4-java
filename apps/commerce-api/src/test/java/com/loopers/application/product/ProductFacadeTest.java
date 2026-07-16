@@ -11,6 +11,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +36,7 @@ import com.loopers.domain.product.ProductViewedEvent;
 import com.loopers.domain.product.projection.ProductAdminView;
 import com.loopers.domain.product.projection.ProductDetail;
 import com.loopers.domain.product.projection.ProductSummary;
+import com.loopers.domain.ranking.RankingRepository;
 import com.loopers.support.cache.RedisCacheStore;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -47,6 +49,9 @@ class ProductFacadeTest {
 
     @Mock
     private ProductRepository productRepository;
+
+    @Mock
+    private RankingRepository rankingRepository;
 
     @Mock
     private RedisCacheStore redisCacheStore;
@@ -311,15 +316,17 @@ class ProductFacadeTest {
             given(productRepository.getActiveDetailById(1L)).willReturn(detail);
             given(redisCacheStore.getOrLoad(eq("product:detail:1"), eq(ProductDetailInfo.class), any(Duration.class), any()))
                 .willAnswer(invocation -> ((Supplier<ProductDetailInfo>) invocation.getArgument(3)).get());
+            given(rankingRepository.findRank(any(LocalDate.class), eq(1L))).willReturn(Optional.of(1L));
 
             // act
-            ProductDetailInfo result = productFacade.readProduct(1L);
+            ProductDetailWithRankInfo result = productFacade.readProduct(1L);
 
             // assert
             assertAll(
-                () -> assertThat(result.productId()).isEqualTo(1L),
-                () -> assertThat(result.isAvailable()).isTrue(),
-                () -> assertThat(result.likeCount()).isEqualTo(2),
+                () -> assertThat(result.detail().productId()).isEqualTo(1L),
+                () -> assertThat(result.detail().isAvailable()).isTrue(),
+                () -> assertThat(result.detail().likeCount()).isEqualTo(2),
+                () -> assertThat(result.rank()).isEqualTo(2L),
                 () -> then(eventPublisher).should().publishEvent(ProductViewedEvent.from(1L))
             );
         }
@@ -354,11 +361,11 @@ class ProductFacadeTest {
                 .willReturn(cached);
 
             // act
-            ProductDetailInfo result = productFacade.readProduct(1L);
+            ProductDetailWithRankInfo result = productFacade.readProduct(1L);
 
             // assert
             assertAll(
-                () -> assertThat(result).isEqualTo(cached),
+                () -> assertThat(result.detail()).isEqualTo(cached),
                 () -> then(productRepository).should(never()).getActiveDetailById(any())
             );
         }
@@ -374,14 +381,31 @@ class ProductFacadeTest {
                 .willAnswer(invocation -> ((Supplier<ProductDetailInfo>) invocation.getArgument(3)).get());
 
             // act
-            ProductDetailInfo result = productFacade.readProduct(1L);
+            ProductDetailWithRankInfo result = productFacade.readProduct(1L);
 
             // assert
             assertAll(
-                () -> assertThat(result.likeCount()).isEqualTo(2),
+                () -> assertThat(result.detail().likeCount()).isEqualTo(2),
                 () -> then(productRepository).should().getActiveDetailById(1L),
                 () -> then(redisCacheStore).should().getOrLoad(eq("product:detail:1"), eq(ProductDetailInfo.class), eq(Duration.ofSeconds(60)), any())
             );
+        }
+
+        @SuppressWarnings("unchecked")
+        @DisplayName("오늘 랭킹판에 상품이 없으면 rank는 null로 반환된다.")
+        @Test
+        void returnsNullRank_whenProductIsAbsentFromRankingBoard() {
+            // arrange
+            ProductDetailInfo cached = new ProductDetailInfo(1L, "감성 가디건", "포근한 가디건", 1L, "감성 브랜드", 39_000, true, 9);
+            given(redisCacheStore.getOrLoad(eq("product:detail:1"), eq(ProductDetailInfo.class), any(Duration.class), any()))
+                .willReturn(cached);
+            given(rankingRepository.findRank(any(LocalDate.class), eq(1L))).willReturn(Optional.empty());
+
+            // act
+            ProductDetailWithRankInfo result = productFacade.readProduct(1L);
+
+            // assert
+            assertThat(result.rank()).isNull();
         }
     }
 
