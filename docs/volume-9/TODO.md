@@ -365,9 +365,9 @@ flowchart TD
 
 > 쉽게 말하면: 자정에 랭킹판이 텅 비지 않게, 밤 11시 50분에 오늘 점수의 10%를 내일 판에 미리 깔아두는 단계.
 
-- [ ] **23:50 `@Scheduled`** — commerce-streamer에. 크론 표현식은 설정으로 외부화
-- [ ] **carry-over Lua (원자)** — `EXISTS 내일키(있으면 skip) + EXISTS 오늘키(없으면 skip) + ZUNIONSTORE 내일키 1 오늘키 WEIGHTS 0.1 + EXPIREAT(내일 + 2일 자정)`를 **한 스크립트로**. 가드·union·EXPIRE를 따로 두면 그 사이 경합이 나므로 원자화 (재실행·이중 합산·EXPIRE 누락 방지). 이월 비율 0.1은 설정 외부화
-- [ ] 통합 테스트 — 이월 점수 10% 정확성 / TTL이 "내일 + 2일 자정"에 존재 / 재실행 시 변화 없음(SKIP_DEST_EXISTS) / 오늘 키 부재 시 무해(SKIP_SRC_EMPTY)
+- [x] **23:50 `@Scheduled`** — commerce-streamer에. 크론 표현식은 설정으로 외부화
+- [x] **carry-over Lua (원자)** — `EXISTS 내일키(있으면 skip) + EXISTS 오늘키(없으면 skip) + ZUNIONSTORE 내일키 1 오늘키 WEIGHTS 0.1 + EXPIREAT(내일 + 2일 자정)`를 **한 스크립트로**. 가드·union·EXPIRE를 따로 두면 그 사이 경합이 나므로 원자화 (재실행·이중 합산·EXPIRE 누락 방지). 이월 비율 0.1은 설정 외부화
+- [x] 통합 테스트 — 이월 점수 10% 정확성 / TTL이 "내일 + 2일 자정"에 존재 / 재실행 시 변화 없음(SKIP_DEST_EXISTS) / 오늘 키 부재 시 무해(SKIP_SRC_EMPTY)
 
 **이 단계 완료 기준:** 자정 직후에도 어제의 인기 상품이 (10% 점수로) 랭킹에 남아 있고, 오늘 활동으로 자연스럽게 역전된다.
 
