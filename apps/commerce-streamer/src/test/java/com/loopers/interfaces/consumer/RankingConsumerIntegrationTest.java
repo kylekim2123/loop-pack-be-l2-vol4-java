@@ -220,6 +220,49 @@ class RankingConsumerIntegrationTest {
         }
     }
 
+    @DisplayName("가중치 순서 반영")
+    @Nested
+    class WeightedOrdering {
+
+        @DisplayName("주문 1건 상품이 좋아요 3건 상품보다 랭킹판 순위가 높다.")
+        @Test
+        void ranksOrderedProductAboveTripleLikedProduct_whenOrderAndThreeLikesAreConsumed() {
+            // arrange
+            Long orderedProductId = 209L;
+            Long likedProductId = 210L;
+            long unitPrice = 50_000L;
+            long quantity = 1L;
+            ZonedDateTime occurredAt = ZonedDateTime.now();
+            LocalDate rankingDate = occurredAt.withZoneSameInstant(SEOUL_ZONE).toLocalDate();
+            String rankingKey = RankingKeyGenerator.generate(rankingDate);
+
+            // act
+            kafkaTemplate.send(ORDER_EVENTS_TOPIC, "1",
+                envelope(UUID.randomUUID().toString(), "ORDER_CREATED", 1L, occurredAt,
+                    Map.of(
+                        "orderId", 1L,
+                        "userId", 1L,
+                        "finalAmount", unitPrice * quantity,
+                        "items", List.of(
+                            Map.of("productId", orderedProductId, "quantity", quantity, "price", unitPrice)
+                        )
+                    )));
+            publishLikeCreated(UUID.randomUUID().toString(), likedProductId, occurredAt);
+            publishLikeCreated(UUID.randomUUID().toString(), likedProductId, occurredAt);
+            publishLikeCreated(UUID.randomUUID().toString(), likedProductId, occurredAt);
+
+            // assert
+            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertAll(
+                () -> assertThat(scoreOf(rankingDate, orderedProductId))
+                    .isCloseTo(rankingScoreCalculator.orderItemScore(unitPrice, quantity), SCORE_TOLERANCE),
+                () -> assertThat(scoreOf(rankingDate, likedProductId))
+                    .isCloseTo(rankingScoreCalculator.likeCreatedScore() * 3, SCORE_TOLERANCE),
+                () -> assertThat(masterRedisTemplate.opsForZSet().reverseRank(rankingKey, String.valueOf(orderedProductId)))
+                    .isLessThan(masterRedisTemplate.opsForZSet().reverseRank(rankingKey, String.valueOf(likedProductId)))
+            ));
+        }
+    }
+
     @DisplayName("날짜별 키 분리")
     @Nested
     class RankingDateSeparation {
