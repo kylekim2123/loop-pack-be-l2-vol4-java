@@ -21,6 +21,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import com.loopers.config.redis.RedisConfig;
+import com.loopers.domain.ranking.CarryOverResult;
 import com.loopers.domain.ranking.RankingRepository;
 import com.loopers.domain.ranking.RankingScoreEvent;
 import com.loopers.support.ranking.RankingKeyGenerator;
@@ -33,6 +34,9 @@ class RankingRepositoryIntegrationTest {
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
     private static final Offset<Double> SCORE_TOLERANCE = Offset.offset(0.0001);
     private static final String RANKING_KEY = RankingKeyGenerator.generate(RANKING_DATE);
+    private static final double CARRY_OVER_WEIGHT_RATIO = 0.1;
+    private static final LocalDate CARRY_OVER_TOMORROW_DATE = RANKING_DATE.plusDays(1);
+    private static final String CARRY_OVER_TOMORROW_KEY = RankingKeyGenerator.generate(CARRY_OVER_TOMORROW_DATE);
 
     @Autowired
     private RankingRepository rankingRepository;
@@ -221,6 +225,94 @@ class RankingRepositoryIntegrationTest {
             assertAll(
                 () -> assertThat(masterRedisTemplate.hasKey(handledKey(eventId))).isTrue(),
                 () -> assertThat(masterRedisTemplate.getExpire(handledKey(eventId), TimeUnit.SECONDS)).isGreaterThan(0)
+            );
+        }
+    }
+
+    @Nested
+    @DisplayName("점수 carry-over")
+    class ScoreCarryOver {
+
+        @DisplayName("오늘 판의 각 상품 점수 중 설정된 비율만큼 내일 판에 이월된다.")
+        @Test
+        void carriesOverWeightedRatioOfEachProductScore() {
+            // arrange
+            masterRedisTemplate.opsForZSet().add(RANKING_KEY, "1", 100.0);
+            masterRedisTemplate.opsForZSet().add(RANKING_KEY, "2", 50.0);
+
+            // act
+            rankingRepository.carryOverScores(RANKING_DATE, CARRY_OVER_WEIGHT_RATIO);
+
+            // assert
+            assertAll(
+                () -> assertThat(masterRedisTemplate.opsForZSet().score(CARRY_OVER_TOMORROW_KEY, "1")).isCloseTo(10.0, SCORE_TOLERANCE),
+                () -> assertThat(masterRedisTemplate.opsForZSet().score(CARRY_OVER_TOMORROW_KEY, "2")).isCloseTo(5.0, SCORE_TOLERANCE)
+            );
+        }
+
+        @DisplayName("이월된 내일 판의 만료는 내일 일자 + 2일 자정(Asia/Seoul)으로 설정된다.")
+        @Test
+        void setsExpiryToFixedMoment_whenCarriedOver() {
+            // arrange
+            masterRedisTemplate.opsForZSet().add(RANKING_KEY, "1", 100.0);
+            long expectedExpireAtEpochSecond = CARRY_OVER_TOMORROW_DATE.plusDays(2)
+                .atStartOfDay(SEOUL_ZONE)
+                .toEpochSecond();
+
+            // act
+            rankingRepository.carryOverScores(RANKING_DATE, CARRY_OVER_WEIGHT_RATIO);
+
+            // assert
+            Long remainingTtlSeconds = masterRedisTemplate.getExpire(CARRY_OVER_TOMORROW_KEY, TimeUnit.SECONDS);
+            long actualExpireAtEpochSecond = Instant.now().getEpochSecond() + remainingTtlSeconds;
+            assertThat(actualExpireAtEpochSecond).isCloseTo(expectedExpireAtEpochSecond, Offset.offset(5L));
+        }
+
+        @DisplayName("같은 날짜로 두 번 실행해도 내일 판 점수는 변하지 않고, 두 번째 실행은 skip 결과를 반환한다.")
+        @Test
+        void skipsSecondRun_whenAlreadyCarriedOver() {
+            // arrange
+            masterRedisTemplate.opsForZSet().add(RANKING_KEY, "1", 100.0);
+            rankingRepository.carryOverScores(RANKING_DATE, CARRY_OVER_WEIGHT_RATIO);
+
+            // act
+            CarryOverResult secondResult = rankingRepository.carryOverScores(RANKING_DATE, CARRY_OVER_WEIGHT_RATIO);
+
+            // assert
+            assertAll(
+                () -> assertThat(secondResult).isEqualTo(CarryOverResult.TARGET_ALREADY_EXISTS),
+                () -> assertThat(masterRedisTemplate.opsForZSet().score(CARRY_OVER_TOMORROW_KEY, "1")).isCloseTo(10.0, SCORE_TOLERANCE)
+            );
+        }
+
+        @DisplayName("오늘 판이 존재하지 않으면 아무 키도 생성되지 않고 skip 결과를 반환한다.")
+        @Test
+        void createsNoKey_whenTodayRankingDoesNotExist() {
+            // act
+            CarryOverResult result = rankingRepository.carryOverScores(RANKING_DATE, CARRY_OVER_WEIGHT_RATIO);
+
+            // assert
+            assertAll(
+                () -> assertThat(result).isEqualTo(CarryOverResult.SOURCE_MISSING),
+                () -> assertThat(masterRedisTemplate.hasKey(RANKING_KEY)).isFalse(),
+                () -> assertThat(masterRedisTemplate.hasKey(CARRY_OVER_TOMORROW_KEY)).isFalse()
+            );
+        }
+
+        @DisplayName("내일 판에 이미 점수가 있으면 기존 점수가 그대로 유지되고 skip 결과를 반환한다.")
+        @Test
+        void keepsExistingScore_whenTomorrowRankingAlreadyExists() {
+            // arrange
+            masterRedisTemplate.opsForZSet().add(RANKING_KEY, "1", 100.0);
+            masterRedisTemplate.opsForZSet().add(CARRY_OVER_TOMORROW_KEY, "1", 999.0);
+
+            // act
+            CarryOverResult result = rankingRepository.carryOverScores(RANKING_DATE, CARRY_OVER_WEIGHT_RATIO);
+
+            // assert
+            assertAll(
+                () -> assertThat(result).isEqualTo(CarryOverResult.TARGET_ALREADY_EXISTS),
+                () -> assertThat(masterRedisTemplate.opsForZSet().score(CARRY_OVER_TOMORROW_KEY, "1")).isCloseTo(999.0, SCORE_TOLERANCE)
             );
         }
     }

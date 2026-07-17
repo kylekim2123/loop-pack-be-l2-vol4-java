@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.loopers.config.redis.RedisConfig;
+import com.loopers.domain.ranking.CarryOverResult;
 import com.loopers.domain.ranking.RankingRepository;
 import com.loopers.domain.ranking.RankingScoreEvent;
 import com.loopers.support.ranking.RankingKeyGenerator;
@@ -33,6 +34,8 @@ public class RankingRepositoryImpl implements RankingRepository {
     private static final ZoneId RANKING_ZONE = ZoneId.of("Asia/Seoul");
     private static final String RANKING_SCORE_APPLY_SCRIPT_PATH = "lua/ranking-score-apply.lua";
     private static final RedisScript<Long> RANKING_SCORE_APPLY_SCRIPT = loadRankingScoreApplyScript();
+    private static final String RANKING_CARRY_OVER_SCRIPT_PATH = "lua/ranking-carry-over.lua";
+    private static final RedisScript<Long> RANKING_CARRY_OVER_SCRIPT = loadRankingCarryOverScript();
 
     private final RedisTemplate<String, String> masterRedisTemplate;
     private final ObjectMapper objectMapper;
@@ -66,6 +69,27 @@ public class RankingRepositoryImpl implements RankingRepository {
         log.debug("랭킹 점수 적재 완료 - rankingKey={}, appliedEventCount={}", rankingKey, appliedEventCount);
     }
 
+    @Override
+    public CarryOverResult carryOverScores(LocalDate fromDate, double weightRatio) {
+        String todayKey = RankingKeyGenerator.generate(fromDate);
+        LocalDate tomorrowDate = fromDate.plusDays(1);
+        String tomorrowKey = RankingKeyGenerator.generate(tomorrowDate);
+        long expireAtEpochSecond = tomorrowDate.plusDays(RANKING_RETENTION_DAYS)
+            .atStartOfDay(RANKING_ZONE)
+            .toEpochSecond();
+
+        Long scriptReturnCode = masterRedisTemplate.execute(
+            RANKING_CARRY_OVER_SCRIPT,
+            List.of(todayKey, tomorrowKey),
+            String.valueOf(weightRatio),
+            String.valueOf(expireAtEpochSecond)
+        );
+
+        CarryOverResult result = CarryOverResult.from(scriptReturnCode);
+        log.debug("랭킹 점수 carry-over 시도 완료 - todayKey={}, tomorrowKey={}, result={}", todayKey, tomorrowKey, result);
+        return result;
+    }
+
     private String serialize(RankingScoreEvent event) {
         try {
             ObjectNode eventNode = objectMapper.createObjectNode();
@@ -87,6 +111,13 @@ public class RankingRepositoryImpl implements RankingRepository {
     private static RedisScript<Long> loadRankingScoreApplyScript() {
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource(RANKING_SCORE_APPLY_SCRIPT_PATH));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static RedisScript<Long> loadRankingCarryOverScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource(RANKING_CARRY_OVER_SCRIPT_PATH));
         script.setResultType(Long.class);
         return script;
     }
