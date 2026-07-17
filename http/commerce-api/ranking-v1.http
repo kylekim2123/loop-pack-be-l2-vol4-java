@@ -1,48 +1,138 @@
-### E2E 관통 시나리오 (로컬 인프라 필요)
+### E2E 관통 시나리오 — 위에서부터 순서대로 실행 (로컬 인프라 필요)
 # 1) docker-compose -f ./docker/infra-compose.yml up  (MySQL·Redis·Kafka)
-# 2) ./gradlew :apps:commerce-api:bootRun / :apps:commerce-streamer:bootRun 각각 실행
-# 3) 아래 순서대로 호출: 이벤트 발생(조회/좋아요/주문) → streamer 로그·ZSET 확인 → 랭킹 조회
-#    ZSET 직접 확인: docker exec -it <redis-master> redis-cli ZREVRANGE ranking:all:{오늘 uuuuMMdd} 0 -1 WITHSCORES
+# 2) ./gradlew :apps:commerce-api:bootRun (8080)
+#    SERVER_PORT=8082 MANAGEMENT_SERVER_PORT=8083 ./gradlew :apps:commerce-streamer:bootRun
+# 3) 아래 순서대로: [시드] → [이벤트 발생] → [대기열 입장권] → [주문] → 수 초 대기 → [확인]
+#    ZSET 직접 확인: docker exec redis-master redis-cli ZREVRANGE ranking:all:{오늘 uuuuMMdd} 0 -1 WITHSCORES
+# 주의: local 프로파일은 ddl-auto=create — commerce-api를 재시작했다면 [시드]부터 다시 실행
 
-### [이벤트 발생 1] 상품 상세 조회 → PRODUCT_VIEWED 발행 (+0.1점)
+### [시드 1] 회원가입 (201 Created)
+POST http://localhost:8080/api/v1/users
+Content-Type: application/json
+
+{
+  "loginId": "testuser",
+  "password": "Kyle!2030",
+  "name": "카일",
+  "birthDate": "1995-01-01",
+  "email": "test@loopers.com"
+}
+
+### [시드 2] 브랜드 등록 (201 Created, 관리자)
+POST http://localhost:8080/api-admin/v1/brands
+Content-Type: application/json
+X-Loopers-Ldap: loopers.admin
+
+{
+  "name": "감성브랜드",
+  "description": "테스트 브랜드"
+}
+
+### [시드 3] 상품 1 등록 — 조회·좋아요 대상 (201 Created)
+POST http://localhost:8080/api-admin/v1/products
+Content-Type: application/json
+X-Loopers-Ldap: loopers.admin
+
+{
+  "brandId": 1,
+  "name": "감성 가디건",
+  "description": "조회·좋아요 대상",
+  "price": 39000,
+  "stock": 10
+}
+
+### [시드 4] 상품 2 등록 — 주문 대상 (201 Created)
+POST http://localhost:8080/api-admin/v1/products
+Content-Type: application/json
+X-Loopers-Ldap: loopers.admin
+
+{
+  "brandId": 1,
+  "name": "프리미엄 코트",
+  "description": "주문 대상",
+  "price": 50000,
+  "stock": 10
+}
+
+### [이벤트 발생 1] 상품 1 상세 조회 → PRODUCT_VIEWED 발행 (+0.1점)
 GET http://localhost:8080/api/v1/products/1
 
-### [이벤트 발생 2] 좋아요 등록 → LIKE_CREATED 발행 (+0.2점)
+### [이벤트 발생 2] 상품 1 좋아요 → LIKE_CREATED 발행 (+0.2점)
 POST http://localhost:8080/api/v1/products/1/likes
 X-Loopers-LoginId: testuser
 X-Loopers-LoginPw: Kyle!2030
 
-### [이벤트 발생 2-취소] 좋아요 취소 → LIKE_DELETED 발행 (-0.2점)
-DELETE http://localhost:8080/api/v1/products/1/likes
+### [이벤트 발생 2-취소, 선택] 좋아요 취소 → LIKE_DELETED 발행 (-0.2점, 대칭 확인용)
+# 실행하면 상품 1 점수가 조회분(0.1)만 남는다. 다시 [이벤트 발생 2]를 실행하면 +0.2 재반영.
+# DELETE http://localhost:8080/api/v1/products/1/likes
+# X-Loopers-LoginId: testuser
+# X-Loopers-LoginPw: Kyle!2030
+
+### [대기열 1] 진입 — 주문 API는 입장권 게이트가 걸려 있어 먼저 대기열에 들어가야 함 (200 OK)
+POST http://localhost:8080/api/v1/queue/enter
 X-Loopers-LoginId: testuser
 X-Loopers-LoginPw: Kyle!2030
 
-### [이벤트 발생 3] 주문 생성 → ORDER_CREATED 발행 (+0.7 × log1p(단가×수량))
+### [대기열 2] 순번 조회 — 입장권 발급까지 수 초 걸리니 entryToken이 나올 때까지 재실행
+# 응답의 entryToken을 전역 변수로 저장해 아래 주문 요청이 자동으로 사용한다.
+GET http://localhost:8080/api/v1/queue/position
+X-Loopers-LoginId: testuser
+X-Loopers-LoginPw: Kyle!2030
+
+> {%
+    const entryToken = response.body.data.entryToken;
+    if (entryToken) {
+        client.global.set("entryToken", entryToken);
+        client.log("입장권 저장됨: " + entryToken);
+    } else {
+        client.log("아직 대기 중 (position=" + response.body.data.position + ") — 이 요청을 다시 실행하세요.");
+    }
+%}
+
+### [이벤트 발생 3] 상품 2 주문 → ORDER_CREATED 발행 (+0.7 × log1p(50000×1) ≈ 7.57점)
 POST http://localhost:8080/api/v1/orders
 Content-Type: application/json
 X-Loopers-LoginId: testuser
 X-Loopers-LoginPw: Kyle!2030
+X-Entry-Token: {{entryToken}}
 
 {
   "items": [
-    { "productId": 1, "quantity": 1 }
+    { "productId": 2, "quantity": 1 }
   ]
 }
 
-### 랭킹 페이지 - 오늘 (200 OK, date 생략 시 오늘)
+### [확인 1] 랭킹 페이지 - 오늘 (200 OK) — 1위 프리미엄 코트(≈7.57), 2위 감성 가디건(0.3)
+# Outbox 릴레이(1초 주기) + Kafka 소비를 거치므로 주문 후 수 초 뒤 조회
 GET http://localhost:8080/api/v1/rankings?size=20&page=1
 
-### 랭킹 페이지 - 날짜 지정 (200 OK, 어제 날짜로 바꿔 날짜 격리 확인)
+### [확인 2] 랭킹 페이지 - 날짜 지정 (200 OK) — 어제 날짜로 바꾸면 빈 판(날짜 격리)
 GET http://localhost:8080/api/v1/rankings?date=20260716&size=20&page=1
 
-### 랭킹 페이지 - 페이지 이동 (200 OK, 순위 번호가 offset+1부터 이어지는지)
-GET http://localhost:8080/api/v1/rankings?size=2&page=2
+### [확인 3] 랭킹 페이지 - 페이지 이동 (200 OK) — 순위 번호가 offset+1부터 이어지는지
+GET http://localhost:8080/api/v1/rankings?size=1&page=2
 
-### 랭킹 페이지 - 잘못된 날짜 형식 (400 Bad Request)
+### [확인 4] 랭킹 페이지 - 잘못된 날짜 형식 (400 Bad Request)
 GET http://localhost:8080/api/v1/rankings?date=2026-07-17
 
-### 상품 상세 - 순위 포함 (200 OK, 랭킹판에 있으면 rank 숫자)
+### [확인 5] 상품 상세 - 순위 포함 (200 OK) — 상품 1의 rank 확인
+# 이 조회 자체가 PRODUCT_VIEWED를 또 발행하므로 점수가 +0.1씩 오르는 것도 정상 동작
 GET http://localhost:8080/api/v1/products/1
 
-### 상품 상세 - 랭킹판 밖 상품 (200 OK, rank가 null로 명시 응답되는지)
-GET http://localhost:8080/api/v1/products/99
+### [확인 6] 상품 상세 - 랭킹판 밖 상품의 rank: null 확인
+# 이벤트를 한 번도 안 만든 새 상품을 등록한 직후 조회하면 rank가 null로 명시 응답된다.
+POST http://localhost:8080/api-admin/v1/products
+Content-Type: application/json
+X-Loopers-Ldap: loopers.admin
+
+{
+  "brandId": 1,
+  "name": "랭킹 밖 신상품",
+  "description": "rank null 확인용",
+  "price": 10000,
+  "stock": 10
+}
+
+### [확인 6-조회] 신상품 상세 (200 OK, rank: null 포함)
+# 첫 조회는 아직 이벤트가 반영되기 전이라 rank가 null — 응답에 "rank": null 키가 존재하는지 확인
+GET http://localhost:8080/api/v1/products/3
