@@ -1,0 +1,48 @@
+### E2E 관통 시나리오 (로컬 인프라 필요)
+# 1) docker-compose -f ./docker/infra-compose.yml up  (MySQL·Redis·Kafka)
+# 2) ./gradlew :apps:commerce-api:bootRun / :apps:commerce-streamer:bootRun 각각 실행
+# 3) 아래 순서대로 호출: 이벤트 발생(조회/좋아요/주문) → streamer 로그·ZSET 확인 → 랭킹 조회
+#    ZSET 직접 확인: docker exec -it <redis-master> redis-cli ZREVRANGE ranking:all:{오늘 uuuuMMdd} 0 -1 WITHSCORES
+
+### [이벤트 발생 1] 상품 상세 조회 → PRODUCT_VIEWED 발행 (+0.1점)
+GET http://localhost:8080/api/v1/products/1
+
+### [이벤트 발생 2] 좋아요 등록 → LIKE_CREATED 발행 (+0.2점)
+POST http://localhost:8080/api/v1/products/1/likes
+X-Loopers-LoginId: testuser
+X-Loopers-LoginPw: Kyle!2030
+
+### [이벤트 발생 2-취소] 좋아요 취소 → LIKE_DELETED 발행 (-0.2점)
+DELETE http://localhost:8080/api/v1/products/1/likes
+X-Loopers-LoginId: testuser
+X-Loopers-LoginPw: Kyle!2030
+
+### [이벤트 발생 3] 주문 생성 → ORDER_CREATED 발행 (+0.7 × log1p(단가×수량))
+POST http://localhost:8080/api/v1/orders
+Content-Type: application/json
+X-Loopers-LoginId: testuser
+X-Loopers-LoginPw: Kyle!2030
+
+{
+  "items": [
+    { "productId": 1, "quantity": 1 }
+  ]
+}
+
+### 랭킹 페이지 - 오늘 (200 OK, date 생략 시 오늘)
+GET http://localhost:8080/api/v1/rankings?size=20&page=1
+
+### 랭킹 페이지 - 날짜 지정 (200 OK, 어제 날짜로 바꿔 날짜 격리 확인)
+GET http://localhost:8080/api/v1/rankings?date=20260716&size=20&page=1
+
+### 랭킹 페이지 - 페이지 이동 (200 OK, 순위 번호가 offset+1부터 이어지는지)
+GET http://localhost:8080/api/v1/rankings?size=2&page=2
+
+### 랭킹 페이지 - 잘못된 날짜 형식 (400 Bad Request)
+GET http://localhost:8080/api/v1/rankings?date=2026-07-17
+
+### 상품 상세 - 순위 포함 (200 OK, 랭킹판에 있으면 rank 숫자)
+GET http://localhost:8080/api/v1/products/1
+
+### 상품 상세 - 랭킹판 밖 상품 (200 OK, rank가 null로 명시 응답되는지)
+GET http://localhost:8080/api/v1/products/99
