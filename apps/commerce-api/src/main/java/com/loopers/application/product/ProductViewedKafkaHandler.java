@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.domain.outbox.OutboxEnvelope;
 import com.loopers.domain.outbox.OutboxEventType;
 import com.loopers.domain.product.ProductViewedEvent;
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class ProductViewedKafkaHandler {
 
     private final KafkaMessagePublisher kafkaMessagePublisher;
+    private final ObjectMapper objectMapper;
     private final DateTimeUtil dateTimeUtil;
 
     @Async(AsyncConfig.EVENT_TASK_EXECUTOR)
@@ -35,6 +37,6 @@ public class ProductViewedKafkaHandler {
             event
         );
 
-        kafkaMessagePublisher.publish(KafkaTopicConfig.CATALOG_EVENTS_TOPIC, envelope.aggregateId(), envelope);
+        kafkaMessagePublisher.publish(KafkaTopicConfig.CATALOG_EVENTS_TOPIC, envelope.aggregateId(), objectMapper.valueToTree(envelope));
     }
 }

@@ -1,6 +1,8 @@
 package com.loopers.application.product;
 
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.function.Supplier;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -13,6 +15,7 @@ import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductSortType;
 import com.loopers.domain.product.ProductViewedEvent;
+import com.loopers.domain.ranking.RankingRepository;
 import com.loopers.support.cache.RedisCacheStore;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -28,9 +31,11 @@ public class ProductFacade {
     private static final Duration PRODUCT_DETAIL_TTL = Duration.ofSeconds(60);
     private static final String PRODUCT_HOT_LIST_KEY_FORMAT = "product:list:likes_desc:p0:s%d";
     private static final Duration PRODUCT_HOT_LIST_TTL = Duration.ofSeconds(30);
+    private static final ZoneId RANKING_ZONE = ZoneId.of("Asia/Seoul");
 
     private final BrandRepository brandRepository;
     private final ProductRepository productRepository;
+    private final RankingRepository rankingRepository;
     private final RedisCacheStore redisCacheStore;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -86,14 +91,18 @@ public class ProductFacade {
     }
 
     @Transactional(readOnly = true)
-    public ProductDetailInfo readProduct(Long productId) {
+    public ProductDetailWithRankInfo readProduct(Long productId) {
         String key = String.format(PRODUCT_DETAIL_KEY_FORMAT, productId);
         Supplier<ProductDetailInfo> productDetailInfoSupplier = () -> ProductDetailInfo.from(productRepository.getActiveDetailById(productId));
 
         ProductDetailInfo productDetailInfo = redisCacheStore.getOrLoad(key, ProductDetailInfo.class, PRODUCT_DETAIL_TTL, productDetailInfoSupplier);
         eventPublisher.publishEvent(ProductViewedEvent.from(productId));
 
-        return productDetailInfo;
+        Long rank = rankingRepository.findRank(LocalDate.now(RANKING_ZONE), productId)
+            .map(zeroBasedRank -> zeroBasedRank + 1)
+            .orElse(null);
+
+        return ProductDetailWithRankInfo.of(productDetailInfo, rank);
     }
 
     @Transactional(readOnly = true)

@@ -154,7 +154,7 @@ class OrderFacadeTest {
                 () -> assertThat(product.getStock().value()).isEqualTo(48),
                 () -> then(orderRepository).should().save(any(OrderModel.class), anyList()),
                 () -> then(eventPublisher).should().publishEvent(
-                    OrderCreatedEvent.of(100L, userId, 78_000, List.of(new OrderCreatedEvent.Item(productId, 2))))
+                    OrderCreatedEvent.of(100L, userId, 78_000, List.of(new OrderCreatedEvent.Item(productId, 2, 39_000))))
             );
         }
 

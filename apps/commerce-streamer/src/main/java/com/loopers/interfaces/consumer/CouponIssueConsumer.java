@@ -8,7 +8,8 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.application.coupon.CouponIssueProcessor;
-import com.loopers.application.event.ConsumedEvent;
+import com.loopers.application.event.CouponIssueRequestedEvent;
+import com.loopers.application.event.CouponIssueRequestedEventParser;
 import com.loopers.confg.kafka.KafkaConfig;
 
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,7 @@ public class CouponIssueConsumer {
         containerFactory = KafkaConfig.SINGLE_LISTENER
     )
     public void consume(ConsumerRecord<Object, Object> message, Acknowledgment acknowledgment) throws JsonProcessingException {
-        ConsumedEvent event = ConsumedEvent.from(objectMapper.readTree(String.valueOf(message.value())));
+        CouponIssueRequestedEvent event = CouponIssueRequestedEventParser.parse(objectMapper.readTree(String.valueOf(message.value())));
         couponIssueProcessor.process(event);
 
         acknowledgment.acknowledge();

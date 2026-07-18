@@ -1,6 +1,7 @@
 package com.loopers.interfaces.consumer;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -8,8 +9,10 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.event.ConsumedEvent;
+import com.loopers.application.event.ProductActivityEvent;
+import com.loopers.application.event.ProductActivityEventParser;
 import com.loopers.application.metrics.ProductMetricsAggregator;
 import com.loopers.confg.kafka.KafkaConfig;
 
@@ -33,8 +36,9 @@ public class ProductMetricsConsumer {
     )
     public void consume(List<ConsumerRecord<Object, Object>> messages, Acknowledgment acknowledgment) throws JsonProcessingException {
         for (ConsumerRecord<Object, Object> message : messages) {
-            ConsumedEvent event = ConsumedEvent.from(objectMapper.readTree(String.valueOf(message.value())));
-            productMetricsAggregator.aggregate(event);
+            JsonNode envelope = objectMapper.readTree(String.valueOf(message.value()));
+            Optional<ProductActivityEvent> event = ProductActivityEventParser.parse(envelope);
+            event.ifPresent(productMetricsAggregator::aggregate);
         }
 
         acknowledgment.acknowledge();

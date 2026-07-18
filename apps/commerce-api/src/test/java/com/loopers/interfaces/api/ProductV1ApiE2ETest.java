@@ -3,6 +3,8 @@ package com.loopers.interfaces.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -11,14 +13,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import com.loopers.config.redis.RedisConfig;
 import com.loopers.domain.brand.BrandModel;
 import com.loopers.domain.like.LikeModel;
 import com.loopers.domain.product.ProductModel;
@@ -26,6 +31,7 @@ import com.loopers.infrastructure.brand.BrandJpaRepository;
 import com.loopers.infrastructure.like.LikeJpaRepository;
 import com.loopers.infrastructure.product.ProductJpaRepository;
 import com.loopers.support.error.ErrorType;
+import com.loopers.support.ranking.RankingKeyGenerator;
 import com.loopers.utils.DatabaseCleanUp;
 import com.loopers.utils.RedisCleanUp;
 
@@ -33,6 +39,7 @@ import com.loopers.utils.RedisCleanUp;
 class ProductV1ApiE2ETest {
 
     private static final String ENDPOINT = "/api/v1/products";
+    private static final ZoneId RANKING_ZONE = ZoneId.of("Asia/Seoul");
     private static final ParameterizedTypeReference<ApiResponse<Map<String, Object>>> MAP_RESPONSE = new ParameterizedTypeReference<>() {};
 
     @Autowired
@@ -52,6 +59,10 @@ class ProductV1ApiE2ETest {
 
     @Autowired
     private RedisCleanUp redisCleanUp;
+
+    @Autowired
+    @Qualifier(RedisConfig.REDIS_TEMPLATE_MASTER)
+    private RedisTemplate<String, String> masterRedisTemplate;
 
     @AfterEach
     void tearDown() {
@@ -82,6 +93,11 @@ class ProductV1ApiE2ETest {
             .productId(productId)
             .build());
         productJpaRepository.incrementLikeCount(productId);
+    }
+
+    private void seedRanking(Long productId, double score) {
+        String rankingKey = RankingKeyGenerator.generate(LocalDate.now(RANKING_ZONE));
+        masterRedisTemplate.opsForZSet().add(rankingKey, String.valueOf(productId), score);
     }
 
     private HttpEntity<Void> guestGet() {
@@ -332,7 +348,7 @@ class ProductV1ApiE2ETest {
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS),
                 () -> assertThat(data)
-                    .containsOnlyKeys("productId", "name", "description", "brand", "price", "isAvailable", "likeCount"),
+                    .containsOnlyKeys("productId", "name", "description", "brand", "price", "isAvailable", "likeCount", "rank"),
                 () -> assertThat(((Number) data.get("productId")).longValue()).isEqualTo(product.getId()),
                 () -> assertThat(data.get("name")).isEqualTo("감성 가디건"),
                 () -> assertThat(data.get("description")).isEqualTo("포근한 감성 가디건"),
@@ -433,6 +449,57 @@ class ProductV1ApiE2ETest {
                 () -> assertThat(((Number) first.getBody().data().get("likeCount")).intValue()).isEqualTo(1),
                 () -> assertThat(second.getBody().data().get("likeCount"))
                     .isEqualTo(first.getBody().data().get("likeCount"))
+            );
+        }
+
+        @DisplayName("오늘 랭킹판에 있는 상품이면, 순위(ZREVRANK+1)가 rank로 반환된다.")
+        @Test
+        void returnsRank_whenProductIsOnTodayRankingBoard() {
+            // arrange
+            BrandModel brand = saveBrand("감성 브랜드");
+            ProductModel first = saveProduct(brand.getId(), "1위 상품", 39_000, 5);
+            ProductModel second = saveProduct(brand.getId(), "2위 상품", 29_000, 5);
+            ProductModel third = saveProduct(brand.getId(), "3위 상품", 19_000, 5);
+            seedRanking(first.getId(), 300);
+            seedRanking(second.getId(), 200);
+            seedRanking(third.getId(), 100);
+
+            // act
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
+                ENDPOINT + "/" + second.getId(),
+                HttpMethod.GET,
+                guestGet(),
+                MAP_RESPONSE
+            );
+
+            // assert
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
+                () -> assertThat(((Number) response.getBody().data().get("rank")).longValue()).isEqualTo(2L)
+            );
+        }
+
+        @DisplayName("오늘 랭킹판에 없는 상품이면, rank 키는 존재하되 값은 null이다.")
+        @Test
+        void returnsNullRank_whenProductIsAbsentFromTodayRankingBoard() {
+            // arrange
+            BrandModel brand = saveBrand("감성 브랜드");
+            ProductModel product = saveProduct(brand.getId(), "감성 가디건", 39_000, 5);
+
+            // act
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = testRestTemplate.exchange(
+                ENDPOINT + "/" + product.getId(),
+                HttpMethod.GET,
+                guestGet(),
+                MAP_RESPONSE
+            );
+
+            // assert
+            Map<String, Object> data = response.getBody().data();
+            assertAll(
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
+                () -> assertThat(data).containsKey("rank"),
+                () -> assertThat(data.get("rank")).isNull()
             );
         }
     }

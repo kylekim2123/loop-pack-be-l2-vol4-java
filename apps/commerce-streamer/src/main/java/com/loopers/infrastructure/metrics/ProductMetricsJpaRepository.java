@@ -6,7 +6,6 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import com.loopers.domain.metrics.ProductMetricsModel;
 
@@ -26,10 +25,10 @@ public interface ProductMetricsJpaRepository extends JpaRepository<ProductMetric
             updated_at = NOW(6)
         """, nativeQuery = true)
     void applyDelta(
-        @Param("productId") Long productId,
-        @Param("likeDelta") long likeDelta,
-        @Param("salesDelta") long salesDelta,
-        @Param("viewDelta") long viewDelta,
-        @Param("occurredAt") ZonedDateTime occurredAt
+        Long productId,
+        long likeDelta,
+        long salesDelta,
+        long viewDelta,
+        ZonedDateTime occurredAt
     );
 }

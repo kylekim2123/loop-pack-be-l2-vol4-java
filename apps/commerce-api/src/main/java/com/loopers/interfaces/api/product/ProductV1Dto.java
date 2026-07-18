@@ -4,7 +4,9 @@ import java.util.List;
 
 import org.springframework.data.domain.Page;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.loopers.application.product.ProductDetailInfo;
+import com.loopers.application.product.ProductDetailWithRankInfo;
 import com.loopers.application.product.ProductSummaryInfo;
 
 public class ProductV1Dto {
@@ -19,10 +21,13 @@ public class ProductV1Dto {
         BrandResponse brand,
         Integer price,
         Boolean isAvailable,
-        Integer likeCount
+        Integer likeCount,
+        @JsonInclude(JsonInclude.Include.ALWAYS) Long rank
     ) {
 
-        public static DetailResponse from(ProductDetailInfo productDetailInfo) {
+        public static DetailResponse from(ProductDetailWithRankInfo productDetailWithRankInfo) {
+            ProductDetailInfo productDetailInfo = productDetailWithRankInfo.detail();
+
             return new DetailResponse(
                 productDetailInfo.productId(),
                 productDetailInfo.name(),
@@ -30,7 +35,8 @@ public class ProductV1Dto {
                 new BrandResponse(productDetailInfo.brandId(), productDetailInfo.brandName()),
                 productDetailInfo.price(),
                 productDetailInfo.isAvailable(),
-                productDetailInfo.likeCount()
+                productDetailInfo.likeCount(),
+                productDetailWithRankInfo.rank()
             );
         }
     }

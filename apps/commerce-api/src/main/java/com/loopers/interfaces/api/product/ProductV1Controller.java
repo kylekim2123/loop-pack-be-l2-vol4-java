@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.loopers.application.product.ProductDetailInfo;
+import com.loopers.application.product.ProductDetailWithRankInfo;
 import com.loopers.application.product.ProductFacade;
 import com.loopers.application.product.ProductSummaryInfo;
 import com.loopers.domain.product.ProductSortType;
@@ -38,8 +38,8 @@ public class ProductV1Controller implements ProductV1ApiSpec {
     @Override
     @GetMapping("/{productId}")
     public ApiResponse<ProductV1Dto.DetailResponse> readProduct(@PathVariable Long productId) {
-        ProductDetailInfo productDetailInfo = productFacade.readProduct(productId);
+        ProductDetailWithRankInfo productDetailWithRankInfo = productFacade.readProduct(productId);
 
-        return ApiResponse.success(ProductV1Dto.DetailResponse.from(productDetailInfo));
+        return ApiResponse.success(ProductV1Dto.DetailResponse.from(productDetailWithRankInfo));
     }
 }

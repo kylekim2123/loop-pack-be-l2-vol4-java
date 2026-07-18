@@ -27,6 +27,8 @@ public interface ProductRepository {
 
     Page<ProductSummary> findActiveSummaries(Long brandId, ProductSortType sort, int page, int size);
 
+    List<ProductSummary> findActiveSummariesByIds(List<Long> ids);
+
     ProductDetail getActiveDetailById(Long id);
 
     Page<ProductAdminView> findActiveAdminViews(Long brandId, int page, int size);

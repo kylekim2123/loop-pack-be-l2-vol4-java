@@ -155,7 +155,7 @@ class DataPlatformEventHandlerIntegrationTest {
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertAll(
             () -> assertThat(sendThreadName.get()).startsWith(EVENT_THREAD_NAME_PREFIX),
             () -> assertThat(sentEvent.get()).isEqualTo(OrderCreatedEvent.of(orderInfo.orderId(), user.getId(), 78_000,
-                List.of(new OrderCreatedEvent.Item(product.getId(), 2))))
+                List.of(new OrderCreatedEvent.Item(product.getId(), 2, 39_000))))
         ));
     }
 

@@ -81,6 +81,22 @@ public interface ProductJpaRepository extends JpaRepository<ProductModel, Long> 
             """)
     Page<ProductSummary> findActiveSummariesOrderByLikeCount(Long brandId, Pageable pageable);
 
+    @Query(value = """
+        SELECT new com.loopers.domain.product.projection.ProductSummary(
+            p.id,
+            p.name.value,
+            b.id,
+            b.name.value,
+            p.price.value,
+            p.stock.value,
+            p.likeCount
+        )
+        FROM ProductModel p
+        JOIN BrandModel b ON b.id = p.brandId
+        WHERE p.deletedAt IS NULL AND p.id IN :ids
+        """)
+    List<ProductSummary> findActiveSummariesByIds(List<Long> ids);
+
     @Query("""
         SELECT new com.loopers.domain.product.projection.ProductDetail(
             p.id,
