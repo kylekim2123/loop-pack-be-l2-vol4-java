@@ -344,10 +344,10 @@ flowchart TD
 
 > 쉽게 말하면: 같은 파이프라인을 월 단위로 한 번 더. Stage 3의 컴포넌트를 재사용해서 "기간 타입과 범위만 다른" Job을 만드는 단계.
 
-- [ ] **Job 골격** — `MonthlyRankingJobConfig`. targetDate가 속한 캘린더 월(1일~말일)을 집계
-- [ ] **공통 컴포넌트 재사용** — Reader SQL·Processor·Writer·publish 로직을 기간 타입·범위 파라미터만 바꿔 재사용 (중복 구현 금지. Stage 3에서 재사용 가능한 형태로 안 나왔다면 여기서 정리)
-- [ ] **주간 합산 금지 확인** — 월간은 반드시 일별 원장에서 직접 재집계 (주간 MV를 입력으로 쓰지 않음)
-- [ ] **Job 통합 테스트** — 월 경계(전월 말일·익월 1일 미포함) / 멱등 재실행 / 주간·월간이 같은 원장에서 서로 다른 결과를 내는지 (기간 격리의 월간 버전)
+- [x] **Job 골격** — `MonthlyRankingJobConfig` (`@ConditionalOnProperty(monthlyRankingJob)`). `RankingPeriodCalculator.monthly`로 targetDate가 속한 캘린더 월(1일~말일) 확정. WeeklyRankingJobConfig와 동형(MONTHLY·`mv_product_rank_monthly`만 다름)
+- [x] **공통 컴포넌트 재사용** — `RankingJobComponents`(@Component) 신설로 Reader SQL·chunk·Writer·cleanup/publish 로직을 단일 원천화. Weekly config를 위임 형태로 리팩터(기존 E2E 5종이 회귀 검증), Monthly는 config만 추가. 두 config는 기간 함수·periodType·MV 테이블·이름만 상이
+- [x] **주간 합산 금지 확인** — 월간도 같은 `product_metrics_daily` 원장을 `metric_date BETWEEN 월초 AND 월말`로 직접 재집계. 주간 MV를 입력으로 쓰지 않음(공통 aggregateReader, 범위만 월)
+- [x] **Job 통합 테스트** — 월 경계(전월 말일·익월 1일 제외) / 멱등 재실행 / 서로 다른 주(W28·W31)의 날짜를 한 달로 합산해 주간과 다른 결과. ✅ monthly 3 케이스 통과
 
 **이 단계 완료 기준:** 주간·월간 두 Job이 같은 원장에서 각자의 기간을 독립으로 압착하고, 서로의 결과에 영향을 주지 않는다.
 
