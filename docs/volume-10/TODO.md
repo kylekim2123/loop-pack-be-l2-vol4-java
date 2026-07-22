@@ -328,13 +328,13 @@ flowchart TD
 
 > 쉽게 말하면: 일별 원장 7일치를 상품별로 합산해 점수를 매기고, TOP 100을 순위와 함께 주간 MV에 넣는 배치 한 판. 이번 주차의 본체예요.
 
-- [ ] **Job 골격** — `WeeklyRankingJobConfig` (기존 `@ConditionalOnProperty` + JOB_NAME 패턴). JobParameters로 `targetDate=uuuuMMdd` 수신 → 기간 계산기로 주간 키·범위 확정
-- [ ] **cleanup Step (Tasklet)** — 스테이징에서 이번 (period_type, period_key) 행 DELETE
-- [ ] **aggregate Step (Chunk)** — Reader: `JdbcCursorItemReader`(엔티티 매핑 불필요·순차 스트리밍, 결정 ④), `SELECT product_id, SUM(...) FROM product_metrics_daily WHERE metric_date BETWEEN ? AND ? GROUP BY product_id` (점수 계산 없음 — SQL엔 합산만) / Processor: 기간 점수 계산기 호출 / Writer: 스테이징 INSERT. **chunk 크기 500** — 이 작업은 "원장 읽어 합산해 스테이징에 넣는" 단순 적재라 복잡한 비즈니스 로직·외부 호출이 없어 청크당 트랜잭션이 가벼움. 그래서 크게 잡아도 안전한 특성(필요 시 더 키울 여지)이며, 근거와 함께 상수화
-- [ ] **publish Step (Tasklet)** — 단일 TX: `DELETE FROM mv_product_rank_weekly WHERE period_key = ?` → `INSERT ... SELECT ROW_NUMBER() OVER (ORDER BY score DESC, product_id ASC) ... LIMIT 100`
-- [ ] **트랜잭션 경계 확인** — aggregate가 청크마다(≈500건) 커밋되는지 로그로 관찰(결정 ④). aggregate 중간 실패 시 앞 청크가 스테이징에 남고, 재실행 때 cleanup이 그걸 지우고 시작하는지 확인
-- [ ] **Job 통합 테스트** (JobLauncherTestUtils) — §8의 4종: 기간 격리(주 바깥 날짜 미포함) / 멱등 재실행(2회 → 동일) / 동점 product_id 순 / 101개 상품 → 정확히 100행. MV 내용(순위·점수·합계) 실단언
-- [ ] **파라미터 동작 확인** — targetDate를 바꿔 다른 주를 집계(백필)하면 각 주의 MV가 독립으로 쌓이는지
+- [x] **Job 골격** — `WeeklyRankingJobConfig` (`@ConditionalOnProperty` + `JOB_NAME`). `@StepScope @Bean`이 `@Value("#{jobParameters['targetDate']}")` 수신 → `RankingPeriodCalculator.weekly`로 주간 키·범위 확정. 기간 무관 컴포넌트(`RankingScoreProcessor`·record·계산기)는 공유, 주간 고유(WEEKLY·범위·`mv_product_rank_weekly`)만 config에 inline (Stage 4가 config만 추가하도록)
+- [x] **cleanup Step (Tasklet)** — `DELETE FROM product_rank_staging WHERE period_type = ? AND period_key = ?`
+- [x] **aggregate Step (Chunk)** — Reader: `JdbcCursorItemReader` + rowMapper→`ProductPeriodSum`, `SELECT product_id, SUM(...) ... GROUP BY product_id` (SQL엔 합산만) / Processor: `RankingScoreProcessor`가 계산기 호출→`ScoredProductRank` / Writer: `JdbcBatchItemWriter` 스테이징 INSERT. **chunk 500** 상수화(근거 주석 아닌 TODO에)
+- [x] **publish Step (Tasklet)** — 단일 TX(`tasklet(t, transactionManager)`): `DELETE mv WHERE period_key` → `INSERT ... SELECT ROW_NUMBER() OVER (ORDER BY score DESC, product_id ASC) ... LIMIT 100`. `rank`는 백틱 인용
+- [x] **트랜잭션 경계 확인** — `ChunkListener` 등록으로 청크 종료(=커밋 단위) 로그 관찰(결정 ④). cleanup→재실행 멱등은 `reRunProducesIdenticalResult`로 검증. (aggregate 중간 실패 시 잔재 시나리오는 결함 주입이 필요해 별도 테스트는 미작성 — cleanup의 delete-then-insert 구조로 안전 보장)
+- [x] **Job 통합 테스트** (JobLauncherTestUtils) — §8의 4종: 기간 격리 / 멱등 재실행 / 동점 product_id / 101→100. MV 내용(순위·점수·합계) 실단언. ✅ 5 케이스 통과
+- [x] **파라미터 동작 확인** — `backfillDifferentWeeksAccumulateIndependently`: targetDate 20260722(W30)·20260729(W31)로 각각 집계 시 두 MV가 독립 period_key로 공존
 
 **이 단계 완료 기준:** `job.name=weeklyRankingJob targetDate=...`로 실행하면 그 주의 TOP 100이 MV에 순위와 함께 적재되고, 몇 번을 다시 돌려도 결과가 같다.
 
