@@ -357,12 +357,12 @@ flowchart TD
 
 > 쉽게 말하면: 기존 랭킹 API에 "period"를 얹어, 일간은 Redis에서(기존 그대로), 주간·월간은 MV에서 꺼내 보여주는 단계.
 
-- [ ] **`period=DAILY|WEEKLY|MONTHLY` 파라미터** — 생략 시 DAILY(기존 호환). 컨트롤러에서 enum 파싱, 형식 오류 → BAD_REQUEST (기존 date 파싱 방침과 동일)
-- [ ] **기간 환산** — WEEKLY/MONTHLY일 때 date → 주간·월간 키. **Stage 1의 공유 기간 계산기(modules/redis)를 그대로 사용** — 배치와 API가 다른 규칙을 보면 랭킹이 조용히 어긋난다 (vol9의 "키 생성기 한 곳" 교훈의 주차 버전)
-- [ ] **MV 조회 경로** — commerce-api에 MV 읽기 엔티티·Repository 신설. (rank, productId, score)를 rank 순으로 페이징 조회, 상품·브랜드 정보는 기존 일간과 같은 IN절 aggregation 재사용. rank는 MV 저장값 그대로(offset 계산 아님)
-- [ ] **응답에 기간 명시** — `period`(DAILY/WEEKLY/MONTHLY)·`periodKey`·`periodStart`·`periodEnd`를 응답 공통 필드로 포함. 일간은 periodKey = 그 날짜(uuuuMMdd), start = end = 그 날짜 — 세 기간 타입이 같은 응답 구조를 공유
-- [ ] **미발행 기간 = 빈 목록** — 진행 중인 주/월 조회 시 빈 목록 정상 응답 (기존 일간 계약과 일관)
-- [ ] **E2E 테스트** — MV 시드 후: period 라우팅 3종 / date→기간 환산(같은 주 다른 날짜 → 같은 결과) / 응답 기간 명시 / 빈 기간 / 페이징 / **period 생략 시 기존 일간 동작 회귀**
+- [x] **`period=DAILY|WEEKLY|MONTHLY` 파라미터** — 생략 시 DAILY(`RankingPeriodType` enum). 컨트롤러 `parseRankingPeriod`가 대소문자 무시 파싱, 형식 오류 → BAD_REQUEST (date 파싱 방침과 동일)
+- [x] **기간 환산** — DAILY→(uuuuMMdd, date, date), WEEKLY/MONTHLY→**Stage 1 공유 `RankingPeriodCalculator`(modules/redis)** 로 date→키·범위. 배치와 API가 같은 계산기를 봐 어긋남 없음
+- [x] **MV 조회 경로** — 읽기 엔티티(`MvProductRankWeekly`·`MvProductRankMonthly`, 최소 4필드)·`PeriodRankingRepository`+Impl 신설. `findByPeriodKeyOrderByRankAsc`(Pageable)로 rank 순 페이징, 상품·브랜드는 기존 IN절 aggregation 재사용. **rank는 MV 저장값 그대로**(공통 헬퍼가 `RankedProduct(rank, productId)` 처리)
+- [x] **응답에 기간 명시** — `period`·`periodKey`·`periodStart`·`periodEnd`를 `PageResponse` 공통 필드로 추가. 일간 periodKey=uuuuMMdd, start=end=그 날짜 — 세 기간이 동일 응답 구조 공유. 필드 추가라 하위호환
+- [x] **미발행 기간 = 빈 목록** — 미발행 주/월 조회 시 빈 content·totalElements 0, 단 periodKey는 응답에 존재(계산기 도출)
+- [x] **E2E 테스트** — `ReadPeriodRankings` 6종(WEEKLY·MONTHLY 라우팅 / 같은 주 다른 날짜 동일 / 빈 기간 / MV 저장 rank 페이징 / 잘못된 period 400) + `ReadRankings`에 DAILY 기간 명시 1종. period 생략 회귀는 기존 일간 7종 유지. ✅ 총 14 케이스 통과
 
 **이 단계 완료 기준:** 랭킹 API 하나로 일간(Redis)·주간·월간(MV) 랭킹이 각각 올바른 저장소에서 나오고, 응답만 봐도 어느 기간의 랭킹인지 알 수 있다.
 
