@@ -143,7 +143,7 @@ sequenceDiagram
 - **주간 = ISO 주차**(`2026-W30` = 7/20~7/26), **월간 = 캘린더 월**(`2026-07`). 배치는 이미 끝난 주/월을 집계합니다.
 - "7월 1주차" 같은 월 기준 주차는 안 씁니다 — 주는 월 경계에 반드시 걸치기 때문에(7/1이 수요일이면 그 주는 6월 주차인가 7월 주차인가) 어느 해석을 골라도 경계 케이스가 생겨요. ISO 주차는 이 문제가 없는 표준입니다.
 - 대안이었던 **롤링 윈도우**(최근 7일/30일)는 "지금 인기"라는 UX 의미는 좋지만 매일 재계산해야 하고 기간 키가 기준일에 의존해 설계가 복잡해져 기각.
-- **연말·연초 함정**: ISO 주차의 연도는 달력 연도가 아니라 **주 기준 연도**입니다(2026-12-28(월)이 속한 주는 2027-W01일 수 있음). vol9에서 일별 키에 `YYYY`(주 기준 연도)를 쓰면 안 됐던 것과 정확히 반대로, **주간 키에는 주 기준 연도가 정답**이에요. 회귀 테스트로 고정합니다.
+- **연말·연초 함정**: ISO 주차의 연도는 달력 연도가 아니라 **주 기준 연도**입니다. 방향이 양쪽으로 어긋납니다 — 12월 말 날짜가 다음 해 주차에 속하기도 하고(2025-12-29(월)~12-31은 이미 **2026-W01**), 1월 초 날짜가 이전 해 주차에 속하기도 합니다(2027-01-01~01-03은 아직 **2026-W53**). (그 주의 목요일이 어느 해에 있는지가 기준.) vol9에서 일별 키에 `YYYY`(주 기준 연도)를 쓰면 안 됐던 것과 정확히 반대로, **주간 키에는 주 기준 연도가 정답**이에요. 회귀 테스트로 고정합니다.
 - 모든 날짜 계산은 **KST(Asia/Seoul)** 명시.
 
 ### ② 주간·월간 점수를 어떻게 계산할까 → **기간 합계에 가중치, 주문은 총액에 log 한 번**
@@ -301,13 +301,13 @@ flowchart TD
 
 > 쉽게 말하면: "2026년 7월 22일이 속한 주는 2026-W30, 그 주는 7/20~7/26"을 계산하는 규칙과, 결과를 담을 테이블들을 확정하는 단계.
 
-- [ ] **기간 계산기** — targetDate(LocalDate)를 받아 `주간 키("2026-W30")·월간 키("2026-07")·기간 시작·끝 날짜`를 돌려주는 순수 로직. ISO 주차(`WeekFields.ISO`), 주 기준 연도, KST 전제. **위치는 modules/redis의 랭킹 지원 패키지(vol9 랭킹 키 생성기 옆)** — 배치(쓰기)와 api(조회 환산)가 같은 규칙을 봐야 하므로 vol9의 "키 규칙은 한 곳" 교훈을 따름 (Redis 전용 모듈에 날짜 로직을 두는 어색함은 있지만, 두 앱이 공유하는 랭킹 유틸의 기존 자리라는 실리를 택함)
-- [ ] **연말·연초 회귀 테스트** — 12/28~1/3 구간 날짜들의 주차 키·연도가 ISO 규칙대로 나오는지 (vol9의 `uuuu` 교훈의 주차 버전)
-- [ ] **MV 테이블 2개** — `mv_product_rank_weekly` / `mv_product_rank_monthly` 엔티티 (commerce-batch): period_key·period_start·period_end·rank·product_id·score·기간 합계 4종, 유니크 (period_key, product_id)·(period_key, rank)
-- [ ] **스테이징 테이블** — `product_rank_staging` 엔티티: period_type + period_key + product_id 유니크, 합계 4종 + score
-- [ ] 엔티티 생성·제약 검증 테스트 — 유니크 제약이 실제로 걸리는지
+- [x] **기간 계산기** — `RankingPeriodCalculator.weekly/monthly(LocalDate)` → `RankingPeriod(periodKey, startDate, endDate)`. ISO 주차(`WeekFields.ISO`), 주 기준 연도, KST 전제. **위치는 modules/redis의 `support/ranking`(vol9 `RankingKeyGenerator` 옆)** — 배치(쓰기)와 api(조회 환산)가 같은 규칙을 봐야 하므로 vol9의 "키 규칙은 한 곳" 교훈을 따름
+- [x] **연말·연초 회귀 테스트** — `RankingPeriodCalculatorTest`. 양방향 검증: 2025-12-29→2026-W01, 2027-01-01→2026-W53. (계획서의 "2026-12-28→2027-W01" 예시는 실제로는 2026-W53이라 §5-①에서 교정함.) 월 경계는 평년/윤년 2월 말일(2026-02→28일, 2028-02→29일)로 고정
+- [x] **MV 테이블 2개** — `MvProductRankWeeklyModel` / `MvProductRankMonthlyModel` (commerce-batch, 평면 엔티티 2개): period_key·period_start·period_end·rank·product_id·score·기간 합계 4종, 유니크 (period_key, product_id)·(period_key, rank). batch는 raw SQL(publish)로만 쓰므로 **빌더 없는 fields-only** 스키마 선언용. **`rank`는 MySQL 8.0 예약어라 `@Column(name = "`rank`")` 백틱 인용 — Stage 3의 publish SQL/유니크 참조에서도 백틱 필수**
+- [x] **스테이징 테이블** — `ProductRankStagingModel` + enum `RankingPeriodType(WEEKLY|MONTHLY)`: period_type + period_key + product_id 유니크, 합계 4종 + score (rank 없음)
+- [x] 엔티티 생성·제약 검증 테스트 — `ProductRankSchemaConstraintTest`. ddl-auto가 만든 실제 스키마에 JdbcTemplate으로 중복 행 삽입→`DataIntegrityViolationException` 확인(weekly·monthly 각 제약 + staging). 스키마 전용 테스트라 `spring.batch.job.enabled=false`로 Job 러너 비활성
 
-**이 단계 완료 기준:** "어떤 날짜가 어느 주·어느 월인지"가 테스트로 고정되고, 결과를 담을 그릇이 준비된다.
+**이 단계 완료 기준:** "어떤 날짜가 어느 주·어느 월인지"가 테스트로 고정되고, 결과를 담을 그릇이 준비된다. ✅ (redis 7 + batch 7 케이스 통과)
 
 ---
 
