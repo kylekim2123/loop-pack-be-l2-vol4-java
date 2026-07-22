@@ -315,10 +315,10 @@ flowchart TD
 
 > 쉽게 말하면: "기간 합계(조회 n건·좋아요 n건·판매금액 n원)를 점수 하나로 바꾸는" 이번 주의 규칙서. 실시간과 가중치 원천은 같고, 주문 항목의 공식만 정법(총액에 log 한 번)으로.
 
-- [ ] **가중치 설정** — commerce-batch yml에 실시간과 같은 프리픽스(`ranking.score.weight`: view 0.1 / like 0.2 / order 0.7) + `@ConfigurationProperties` (기존 streamer의 RankingScoreWeightProperties 패턴을 본뜸)
-- [ ] **기간 점수 계산기** — `0.1×Σview + 0.2×Σlike + 0.7×log1p(Σsales_amount)`. 기간 합계를 받아 점수를 돌려주는 순수 로직
-- [ ] **단위 테스트** — 가중치 반영 순서(금액 실린 상품이 좋아요만 쌓인 상품을 이기는 반례), 금액 0원 경계(log1p(0)=0), 전 지표 0이면 0점
-- [ ] **일간 공식과 다름을 계산기 주석이 아닌 이 문서(결정 ②)에 기록** — 일간은 실시간 근사(건별 log), 주간·월간은 배치 정법(총액 log)
+- [x] **가중치 설정** — commerce-batch yml에 실시간과 같은 프리픽스(`ranking.score.weight`: view 0.1 / like 0.2 / order 0.7) + `@ConfigurationProperties` (기존 streamer의 RankingScoreWeightProperties 패턴을 본뜸). 배치 앱은 `@ConfigurationPropertiesScan`이 있어 record만 두면 자동 등록
+- [x] **기간 점수 계산기** — `PeriodRankingScoreCalculator.score(ProductRankAggregate)` = `0.1×Σview + 0.2×Σlike + 0.7×log1p(Σsales_amount)`. 합계는 `ProductRankAggregate` record(viewCount·likeCount·salesAmount)로 받아 인자 순서 혼동 차단(Stage 3 Reader SUM 결과 매핑 대상으로 확장 예정). log는 총액에 한 번(정법)
+- [x] **단위 테스트** — 가중치 반영 순서(금액 실린 상품이 좋아요만 쌓인 상품을 이기는 반례), 금액 0원 경계(log1p(0)=0 → 판매 항목 기여 0), 전 지표 0이면 0점. ✅ batch 3 케이스 통과
+- [x] **일간 공식과 다름을 계산기 주석이 아닌 이 문서(결정 ②)에 기록** — 이미 결정 ②(§ line 149~158)에 상세 기록됨(일간=실시간 근사 건별 log / 주간·월간=배치 정법 총액 log, `Σlog ≠ logΣ`)
 
 **이 단계 완료 기준:** 기간 합계가 주어지면 점수가 결정되고, 그 규칙이 테스트로 고정된다.
 
