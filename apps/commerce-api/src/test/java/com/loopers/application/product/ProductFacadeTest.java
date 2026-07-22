@@ -316,7 +316,7 @@ class ProductFacadeTest {
             given(productRepository.getActiveDetailById(1L)).willReturn(detail);
             given(redisCacheStore.getOrLoad(eq("product:detail:1"), eq(ProductDetailInfo.class), any(Duration.class), any()))
                 .willAnswer(invocation -> ((Supplier<ProductDetailInfo>) invocation.getArgument(3)).get());
-            given(rankingRepository.findRank(any(LocalDate.class), eq(1L))).willReturn(Optional.of(1L));
+            given(rankingRepository.findDailyRank(any(LocalDate.class), eq(1L))).willReturn(Optional.of(1L));
 
             // act
             ProductDetailWithRankInfo result = productFacade.readProduct(1L);
@@ -399,7 +399,7 @@ class ProductFacadeTest {
             ProductDetailInfo cached = new ProductDetailInfo(1L, "감성 가디건", "포근한 가디건", 1L, "감성 브랜드", 39_000, true, 9);
             given(redisCacheStore.getOrLoad(eq("product:detail:1"), eq(ProductDetailInfo.class), any(Duration.class), any()))
                 .willReturn(cached);
-            given(rankingRepository.findRank(any(LocalDate.class), eq(1L))).willReturn(Optional.empty());
+            given(rankingRepository.findDailyRank(any(LocalDate.class), eq(1L))).willReturn(Optional.empty());
 
             // act
             ProductDetailWithRankInfo result = productFacade.readProduct(1L);
