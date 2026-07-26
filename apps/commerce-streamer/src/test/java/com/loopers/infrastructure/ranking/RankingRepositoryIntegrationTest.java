@@ -30,8 +30,8 @@ import com.loopers.utils.RedisCleanUp;
 @SpringBootTest
 class RankingRepositoryIntegrationTest {
 
-    private static final LocalDate RANKING_DATE = LocalDate.of(2026, 7, 17);
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
+    private static final LocalDate RANKING_DATE = LocalDate.now(SEOUL_ZONE);
     private static final Offset<Double> SCORE_TOLERANCE = Offset.offset(0.0001);
     private static final String RANKING_KEY = RankingKeyGenerator.generate(RANKING_DATE);
     private static final double CARRY_OVER_WEIGHT_RATIO = 0.1;

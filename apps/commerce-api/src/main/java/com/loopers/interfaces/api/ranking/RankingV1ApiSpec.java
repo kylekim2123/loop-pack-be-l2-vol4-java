@@ -10,7 +10,8 @@ public interface RankingV1ApiSpec {
 
     @Operation(
         summary = "랭킹 페이지 조회",
-        description = "지정한 날짜(uuuuMMdd, 생략 시 오늘)의 인기 상품 랭킹을 점수 내림차순으로 페이지 조회한다. 각 항목은 순위·상품·브랜드 정보를 포함하며, 삭제된 상품은 응답에서 제외된다."
+        description = "지정한 기간(period=DAILY|WEEKLY|MONTHLY, 생략 시 DAILY)과 날짜(uuuuMMdd, 생략 시 오늘)가 속한 기간의 인기 상품 랭킹을 순위 순으로 페이지 조회한다. "
+            + "일간은 실시간(Redis), 주간·월간은 집계(MV)에서 조회하며, 응답에 조회된 기간(periodKey·기간 시작·끝)을 명시한다. 삭제된 상품은 응답에서 제외된다."
     )
-    ApiResponse<RankingV1Dto.PageResponse> readRankings(String date, int page, int size);
+    ApiResponse<RankingV1Dto.PageResponse> readRankings(String period, String date, int page, int size);
 }

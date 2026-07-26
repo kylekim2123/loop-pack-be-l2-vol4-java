@@ -136,3 +136,40 @@ X-Loopers-Ldap: loopers.admin
 ### [확인 6-조회] 신상품 상세 (200 OK, rank: null 포함)
 # 첫 조회는 아직 이벤트가 반영되기 전이라 rank가 null — 응답에 "rank": null 키가 존재하는지 확인
 GET http://localhost:8080/api/v1/products/3
+
+### ───────────────────────────────────────────────────────────────
+### [Vol10] 주간·월간 배치 관통 — 위 일간 시나리오에 이어서 (docs/volume-10/검증-리포트.md §5)
+### ───────────────────────────────────────────────────────────────
+# 주간·월간은 '여러 날'의 원장이 필요하다. 실시간 클릭만으론 하루치뿐이라,
+# 며칠치를 원장에 직접 심고 배치를 돌린 뒤 아래를 조회한다.
+#
+# [원장 심기] MySQL에 직접 (예: 2026-W30 = 7/20~7/26 안쪽 날짜들)
+#   docker exec -it docker-mysql-1 mysql -uapplication -papplication loopers -e \
+#   "INSERT INTO product_metrics_daily (product_id, metric_date, view_count, like_count, sales_count, sales_amount, created_at, updated_at) \
+#    VALUES (1,'2026-07-20',10,2,1,39000,NOW(6),NOW(6)),(2,'2026-07-22',3,0,1,50000,NOW(6),NOW(6));"
+#
+# [배치 실행] 그 주/그 달을 집계 (실행하면 Job 하나 돌고 종료)
+#   ./gradlew :apps:commerce-batch:bootRun --args='--job.name=weeklyRankingJob targetDate=20260722'
+#   ./gradlew :apps:commerce-batch:bootRun --args='--job.name=monthlyRankingJob targetDate=20260722'
+#
+# [MV 확인] docker exec -it docker-mysql-1 mysql -uapplication -papplication loopers -e \
+#   "SELECT period_key, \`rank\`, product_id, score FROM mv_product_rank_weekly ORDER BY \`rank\`;"
+
+### [Vol10-1] 주간 랭킹 (200 OK) — 7/22가 속한 주(2026-W30)로 환산, MV 저장 rank 순
+# 응답에 period=WEEKLY, periodKey="2026-W30", periodStart/End가 박혀 있는지 확인
+GET http://localhost:8080/api/v1/rankings?period=WEEKLY&date=20260722&size=20&page=1
+
+### [Vol10-2] 월간 랭킹 (200 OK) — 2026-07로 환산
+GET http://localhost:8080/api/v1/rankings?period=MONTHLY&date=20260722&size=20&page=1
+
+### [Vol10-3] 같은 주 다른 날짜 (200 OK) — 7/20도 2026-W30이라 Vol10-1과 동일 결과
+GET http://localhost:8080/api/v1/rankings?period=WEEKLY&date=20260720
+
+### [Vol10-4] 미발행 기간 (200 OK) — 배치 안 돌린 미래 주는 에러가 아니라 빈 목록 + periodKey
+GET http://localhost:8080/api/v1/rankings?period=WEEKLY&date=20260805
+
+### [Vol10-5] period 생략 = 일간 (200 OK) — 기존 Redis 경로 그대로(vol9 회귀)
+GET http://localhost:8080/api/v1/rankings?date=20260722
+
+### [Vol10-6] 잘못된 period (400 Bad Request)
+GET http://localhost:8080/api/v1/rankings?period=YEARLY&date=20260722

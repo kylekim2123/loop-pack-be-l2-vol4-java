@@ -1,10 +1,12 @@
 package com.loopers.interfaces.api.ranking;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
 
 import com.loopers.application.ranking.RankingItemInfo;
+import com.loopers.application.ranking.RankingResult;
 
 public class RankingV1Dto {
 
@@ -35,6 +37,10 @@ public class RankingV1Dto {
     }
 
     public record PageResponse(
+        String period,
+        String periodKey,
+        LocalDate periodStart,
+        LocalDate periodEnd,
         List<ItemResponse> content,
         int page,
         int size,
@@ -42,13 +48,18 @@ public class RankingV1Dto {
         int totalPages
     ) {
 
-        public static PageResponse from(Page<RankingItemInfo> rankings) {
+        public static PageResponse from(RankingResult result) {
+            Page<RankingItemInfo> rankings = result.rankings();
             List<ItemResponse> content = rankings.getContent()
                 .stream()
                 .map(ItemResponse::from)
                 .toList();
 
             return new PageResponse(
+                result.period().name(),
+                result.window().periodKey(),
+                result.window().startDate(),
+                result.window().endDate(),
                 content,
                 rankings.getNumber() + 1,
                 rankings.getSize(),

@@ -98,7 +98,7 @@ public class ProductFacade {
         ProductDetailInfo productDetailInfo = redisCacheStore.getOrLoad(key, ProductDetailInfo.class, PRODUCT_DETAIL_TTL, productDetailInfoSupplier);
         eventPublisher.publishEvent(ProductViewedEvent.from(productId));
 
-        Long rank = rankingRepository.findRank(LocalDate.now(RANKING_ZONE), productId)
+        Long rank = rankingRepository.findDailyRank(LocalDate.now(RANKING_ZONE), productId)
             .map(zeroBasedRank -> zeroBasedRank + 1)
             .orElse(null);
 
